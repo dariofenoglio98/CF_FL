@@ -29,7 +29,6 @@ def randomize_class(a, include=True):
         return b
 
 # Model
-# Model
 EPS = 1e-9
 class Net(nn.Module):
     def __init__(self, drop_prob=0.3):
@@ -51,6 +50,10 @@ class Net(nn.Module):
         
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=self.drop_prob)
+        self.mask = torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,
+                                  0,0,0,0,0,0,0,1,1,1,1]), requires_grad=False)   #self.mask.to('cuda')
+        self.binary_feature = torch.nn.Parameter(torch.Tensor(
+                            [1,1,1,0,1,1,1,1,1,1,1,1,1,0,0,0,1,1,0,0,0]).bool(), requires_grad=False)
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -79,8 +82,10 @@ class Net(nn.Module):
         p_z2 = torch.distributions.Normal(torch.zeros_like(qz2_x.mean), torch.ones_like(qz2_x.mean))
 
         x_reconstructed = self.decoder(z2)
-        x_reconstructed = torch.clamp(x_reconstructed, min=0, max=1)
-        
+        x_reconstructed = torch.clamp(x_reconstructed, min=0, max=1) 
+        #x_reconstructed[:, self.binary_feature] = torch.sigmoid(x_reconstructed[:, self.binary_feature])
+        #x_reconstructed[:, ~self.binary_feature] = torch.clamp(x_reconstructed[:, ~self.binary_feature], min=0, max=1)
+
         y_prime = randomize_class((out).float(), include=True)
         
         z2_c_y_y_prime = torch.cat((z2, x, out, y_prime), dim=1)
@@ -97,7 +102,13 @@ class Net(nn.Module):
         pz3_z2_c_y = torch.distributions.Normal(z3_mu, z3_sigma)
         
         x_prime_reconstructed = self.decoder(z3)
-        x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1)
+        x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1) 
+        x_prime_reconstructed = x_prime_reconstructed * (1 - self.mask) + (x * self.mask) #
+        #x_prime_reconstructed[:, self.binary_feature] = torch.sigmoid(x_prime_reconstructed[:, self.binary_feature])
+        #x_prime_reconstructed[:, ~self.binary_feature] = torch.clamp(x_prime_reconstructed[:, ~self.binary_feature], min=0, max=1)
+        #x_prime_reconstructed = x_prime_reconstructed * (1 - self.mask) + (x * self.mask)
+        if not self.training:
+            x_prime_reconstructed = torch.round(x_prime_reconstructed)
         
         out2 = self.fc1(x_prime_reconstructed)
         out2 = self.relu(out2)
@@ -129,8 +140,16 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         loss_validity = loss_fn(H2, y_prime.argmax(dim=-1))
         loss_kl2 = torch.distributions.kl_divergence(p_prime, q_prime).mean() 
         loss_p_d = torch.distributions.kl_divergence(p, p_prime).mean() 
-        
-        loss = loss_task + 0.1*loss_kl + 10*loss_rec + 0.5*loss_validity + 0.1*loss_kl + loss_p_d
+        loss_q_d = torch.distributions.kl_divergence(q, q_prime).mean() 
+
+        lambda1 = 0.1 # loss parameter for kl divergence p-q and p_prime-q_prime
+        lambda2 = 10 # loss parameter for input reconstruction
+        lambda3 = 0.5 # loss parameter for validity of counterfactuals
+        lambda4 = 1 # loss parameter for creating counterfactuals that are closer to the initial input
+        #             increasing it, decrease the validity of counterfactuals. It is expected and makes sense.
+        #             It is a design choice to have better counterfactuals or closer counterfactuals.
+        loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_q_d
+        # loss = loss_task + 0.1*loss_kl + 10*loss_rec + 0.5*loss_validity + 0.1*loss_kl2 + loss_p_d + loss_q_d
         print(loss_task, loss_kl, loss_rec, loss_validity)
         train_loss.append(loss.item())
         
@@ -188,20 +207,77 @@ def load_data(client_id="1",device="cpu", type='random'):
     y_val = torch.LongTensor(y_val.values).to(device)
     return X_train, y_train, X_val, y_val, X_test, y_test, num_examples
 
+# load test data
+def evaluation_central_test(type="random", best_model_round=1):
+    # check device
+    device = check_gpu(manual_seed=True, print_info=False)
+    
+    # load data
+    df_test = pd.read_csv("data/df_test_"+type+".csv")
+    df_test = df_test.astype(int)
+    # Dataset split
+    X = df_test.drop('Diabetes_binary', axis=1)
+    y = df_test['Diabetes_binary']
+
+    # scale data
+    scaler = MinMaxScaler()
+    X_test = scaler.fit_transform(X)
+    X_test = torch.LongTensor(X_test).float().to(device)
+    y_test = torch.LongTensor(y.values).to(device)
+
+    # load model
+    model = Net(drop_prob=0.3).to(device)
+    model.load_state_dict(torch.load(f"checkpoints/model_round_{best_model_round}.pth"))
+    # evaluate
+    model.eval()
+    with torch.no_grad():
+        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test)
+    
+    X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
+    x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
+    return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
+ 
+ # visualize examples
+def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled):
+    print('\n\nVisualizing examples of the test set...')
+    features = ['HighBP', 'HighChol', 'CholCheck', 'BMI', 'Smoker',
+    'Stroke', 'HeartDiseaseorAttack', 'PhysActivity', 'Fruits', 'Veggies',
+    'HvyAlcoholConsump', 'AnyHealthcare', 'NoDocbcCost', 'GenHlth',
+    'MentHlth', 'PhysHlth', 'DiffWalk', 'Sex', 'Age', 'Education',
+    'Income']   
+
+    j = 0
+    for i, s in enumerate(X_test_rescaled):
+        if j > 10:
+            break
+        if H2_test[i].argmax() == y_prime[i].argmax():
+            j += 1
+            print('--------------------------')
+            print(f'Patient {j}: Diabetes level = {H_test[i].argmax()}')
+            print(f'Features to change to make the Diabetes level = {H2_test[i].argmax()}')
+            c = 0
+            for el in X_test_rescaled[i] != x_prime_rescaled[i]:
+                if el:
+                    print(f'Feature: {features[c]} from {X_test_rescaled[i][c]} to {x_prime_rescaled[i][c]}')
+                c += 1
+
 # define device
-def check_gpu(manual_seed=True):
+def check_gpu(manual_seed=True, print_info=True):
     if manual_seed:
         torch.manual_seed(0)
     if torch.cuda.is_available():
-        print("CUDA is available")
+        if print_info:
+            print("CUDA is available")
         device = 'cuda'
         torch.cuda.manual_seed_all(0) 
     elif torch.backends.mps.is_available():
-        print("MPS is available")
+        if print_info:
+            print("MPS is available")
         device = torch.device("mps")
         torch.mps.manual_seed(0)
     else:
-        print("CUDA is not available")
+        if print_info:
+            print("CUDA is not available")
         device = 'cpu'
     return device
 
@@ -236,3 +312,4 @@ def plot_loss_and_accuracy(loss, accuracy, rounds):
     plt.legend()
     plt.savefig(f"images/training_{rounds}_rounds.png")
     plt.show()
+    return min_loss_index+1, max_accuracy_index+1

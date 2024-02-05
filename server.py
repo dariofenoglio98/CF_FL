@@ -89,7 +89,7 @@ def main() -> None:
 
     # Start Flower server for three rounds of federated learning
     history = fl.server.start_server(
-        server_address="0.0.0.0:8080",   # my IP 10.21.13.112
+        server_address="0.0.0.0:8080",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )
@@ -106,7 +106,12 @@ def main() -> None:
         json.dump({'loss': loss, 'accuracy': accuracy}, f)
  
     # Plot
-    utils.plot_loss_and_accuracy(loss, accuracy, args.rounds)
+    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds)
+
+    # Evaluate the model on the test set
+    H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(type="random", best_model_round=best_loss_round)
+    # visualize the results
+    utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled)
 
 
 if __name__ == "__main__":

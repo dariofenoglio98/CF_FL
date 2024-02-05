@@ -80,7 +80,9 @@ def main()->None:
 
     # Start Flower client
     client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, n_epochs).to_client()
-    fl.client.start_client(server_address="[::]:8080", client=client) # my IP 10.21.13.112
+    #fl.client.start_client(server_address="[::]:8080", client=client) # my IP 10.21.13.112
+    fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
+
 
 
 if __name__ == "__main__":
