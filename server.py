@@ -79,9 +79,9 @@ def main() -> None:
     #strategy = fl.server.strategy.FedAvg(  # traditional FedAvg, no saving
     strategy = SaveModelStrategy(
         model=utils.Net(drop_prob=drop_prob),
-        min_fit_clients=2, # Never sample less than 10 clients for training
-        min_evaluate_clients=2,  # Never sample less than 5 clients for evaluation
-        min_available_clients=2, # Wait until all 10 clients are available
+        min_fit_clients=3, # Never sample less than 10 clients for training
+        min_evaluate_clients=3,  # Never sample less than 5 clients for evaluation
+        min_available_clients=3, # Wait until all 10 clients are available
         fraction_fit=1.0, # Sample 100 % of available clients for training
         fraction_evaluate=1.0, # Sample 100 % of available clients for evaluation
         evaluate_metrics_aggregation_fn=weighted_average,
@@ -102,7 +102,7 @@ def main() -> None:
     # # check if folder exists and save metrics
     if not os.path.exists("histories"):
         os.makedirs("histories")
-    with open('histories/metrics.json', 'w') as f:
+    with open(f'histories/metrics_{args.rounds}.json', 'w') as f:
         json.dump({'loss': loss, 'accuracy': accuracy}, f)
  
     # Plot

@@ -187,7 +187,8 @@ def evaluate(model, X_test, y_test, loss_fn):
 # load data
 def load_data(client_id="1",device="cpu", type='random'):
     # load data
-    df_train = pd.read_csv('data/df_split_random2.csv')
+    #df_train = pd.read_csv('data/df_split_random2.csv')
+    df_train = pd.read_csv(f'data/df_split_{type}{client_id}.csv')
     df_train = df_train.astype(int)
     # Dataset split
     X = df_train.drop('Diabetes_binary', axis=1)
@@ -231,7 +232,7 @@ def evaluation_central_test(type="random", best_model_round=1):
     # evaluate
     model.eval()
     with torch.no_grad():
-        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test)
+        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
     
     X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
     x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
