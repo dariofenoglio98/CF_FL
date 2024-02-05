@@ -27,6 +27,10 @@ This script is responsible for creating a generic client. Each client is linked 
       ```
       python server.py --rounds 200
       ```
+      To redirect the output to a file, use:
+      ```
+      python server.py --rounds 200 > server_output.txt
+      ```
     - Start clients (example for three clients):
       ```
       python client.py --id 1 --data_type "random"
