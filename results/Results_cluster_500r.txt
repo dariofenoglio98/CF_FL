@@ -1,0 +1,88 @@
+Server Side 
+Minimum Loss occurred at round 15 with a loss value of 0.5638244676765506 
+Maximum Accuracy occurred at round 491 with an accuracy value of 0.7192257066225863
+
+
+Client 2 
+Minimum Loss occurred at round 15 with a loss value of 0.5719543695449829 
+Maximum Accuracy occurred at round 491 with an accuracy value of 0.7106664180755615
+
+
+Client 1 
+Minimum Loss occurred at round 18 with a loss value of 0.5341230034828186 
+Maximum Accuracy occurred at round 142 with an accuracy value of 0.7604336142539978
+
+
+Client 3 
+Minimum Loss occurred at round 24 with a loss value of 0.5268489718437195 
+Maximum Accuracy occurred at round 61 with an accuracy value of 0.7550058960914612
+
+
+
+Visualizing the results of the best model (cluster) on the test set...
+--------------------------
+Patient 1: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: HighChol from 0.0 to 1.0
+Feature: Fruits from 1.0 to 0.0
+Feature: AnyHealthcare from 0.0 to 1.0
+--------------------------
+Patient 2: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: HighChol from 0.0 to 1.0
+Feature: Smoker from 0.0 to 1.0
+Feature: PhysActivity from 0.0 to 1.0
+--------------------------
+Patient 3: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighBP from 0.0 to 1.0
+Feature: Veggies from 0.0 to 1.0
+--------------------------
+Patient 4: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighChol from 1.0 to 0.0
+Feature: HeartDiseaseorAttack from 1.0 to 0.0
+Feature: PhysHlth from 30.0 to 0.0
+--------------------------
+Patient 5: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: Veggies from 0.0 to 1.0
+--------------------------
+Patient 6: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighBP from 0.0 to 1.0
+Feature: Smoker from 0.0 to 1.0
+Feature: PhysActivity from 0.0 to 1.0
+--------------------------
+Patient 7: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: AnyHealthcare from 0.0 to 1.0
+Feature: NoDocbcCost from 1.0 to 0.0
+--------------------------
+Patient 8: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighBP from 0.0 to 1.0
+Feature: HighChol from 0.0 to 1.0
+Feature: Smoker from 1.0 to 0.0
+--------------------------
+Patient 9: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighChol from 1.0 to 0.0
+Feature: Smoker from 0.0 to 1.0
+--------------------------
+Patient 10: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: HighChol from 1.0 to 0.0
+Feature: Smoker from 1.0 to 0.0
+Feature: PhysActivity from 0.0 to 1.0
+Feature: Fruits from 0.0 to 1.0
+Feature: DiffWalk from 1.0 to 0.0
+--------------------------
+Patient 11: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighChol from 0.0 to 1.0
+Training time: 2.24 minutes

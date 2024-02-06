@@ -7,6 +7,9 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 import os
+import csv
+
+
 
 
 def randomize_class(a, include=True):
@@ -59,7 +62,7 @@ class Net(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight.data)
                 
-    def forward(self, x):
+    def forward(self, x, include=True):
         out = self.fc1(x)
         out = self.relu(out)
         
@@ -86,7 +89,7 @@ class Net(nn.Module):
         #x_reconstructed[:, self.binary_feature] = torch.sigmoid(x_reconstructed[:, self.binary_feature])
         #x_reconstructed[:, ~self.binary_feature] = torch.clamp(x_reconstructed[:, ~self.binary_feature], min=0, max=1)
 
-        y_prime = randomize_class((out).float(), include=True)
+        y_prime = randomize_class((out).float(), include=include)
         
         z2_c_y_y_prime = torch.cat((z2, x, out, y_prime), dim=1)
         z3_mu = self.concept_mean_qz3_predictor(z2_c_y_y_prime)
@@ -188,7 +191,7 @@ def evaluate(model, X_test, y_test, loss_fn):
 def load_data(client_id="1",device="cpu", type='random'):
     # load data
     #df_train = pd.read_csv('data/df_split_random2.csv')
-    df_train = pd.read_csv(f'data/df_split_{type}{client_id}.csv')
+    df_train = pd.read_csv(f'data/df_split_{type}_{client_id}.csv')
     df_train = df_train.astype(int)
     # Dataset split
     X = df_train.drop('Diabetes_binary', axis=1)
@@ -228,7 +231,7 @@ def evaluation_central_test(type="random", best_model_round=1):
 
     # load model
     model = Net(drop_prob=0.3).to(device)
-    model.load_state_dict(torch.load(f"checkpoints/model_round_{best_model_round}.pth"))
+    model.load_state_dict(torch.load(f"checkpoints/{type}/model_round_{best_model_round}.pth"))
     # evaluate
     model.eval()
     with torch.no_grad():
@@ -239,8 +242,8 @@ def evaluation_central_test(type="random", best_model_round=1):
     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
  
  # visualize examples
-def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled):
-    print('\n\nVisualizing examples of the test set...')
+def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random"):
+    print(f"\n\n\033[95mVisualizing the results of the best model ({data_type}) on the test set...\033[0m")
     features = ['HighBP', 'HighChol', 'CholCheck', 'BMI', 'Smoker',
     'Stroke', 'HeartDiseaseorAttack', 'PhysActivity', 'Fruits', 'Veggies',
     'HvyAlcoholConsump', 'AnyHealthcare', 'NoDocbcCost', 'GenHlth',
@@ -282,10 +285,12 @@ def check_gpu(manual_seed=True, print_info=True):
         device = 'cpu'
     return device
 
-def plot_loss_and_accuracy(loss, accuracy, rounds):
+# plot and save plot on server side
+def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random"):
+    folder = f"images/server_side_{data_type}/"
     # check if folder exists
-    if not os.path.exists("images"):
-        os.makedirs("images")
+    if not os.path.exists(folder):
+        os.makedirs(folder)
     
     # Plot loss and accuracy
     plt.figure(figsize=(12, 6))
@@ -299,8 +304,8 @@ def plot_loss_and_accuracy(loss, accuracy, rounds):
     max_accuracy_index = accuracy.index(max(accuracy))
 
     # Print the rounds where min loss and max accuracy occurred
-    print(f"\nMinimum Loss occurred at round {min_loss_index + 1} with a loss value of {loss[min_loss_index]}")
-    print(f"Maximum Accuracy occurred at round {max_accuracy_index + 1} with an accuracy value of {accuracy[max_accuracy_index]}\n")
+    # print in blue color
+    print(f"\n\033[1;34mServer Side\033[0m \nMinimum Loss occurred at round {min_loss_index + 1} with a loss value of {loss[min_loss_index]} \nMaximum Accuracy occurred at round {max_accuracy_index + 1} with an accuracy value of {accuracy[max_accuracy_index]}\n")
 
     # Mark these points with a star
     plt.scatter(min_loss_index, loss[min_loss_index], color='blue', marker='*', s=100, label='Min Loss')
@@ -311,6 +316,88 @@ def plot_loss_and_accuracy(loss, accuracy, rounds):
     plt.ylabel('Metrics')
     plt.title('Distributed Metrics (Weighted Average on Validation Set)')
     plt.legend()
-    plt.savefig(f"images/training_{rounds}_rounds.png")
+    plt.savefig(folder + f"training_{rounds}_rounds.png")
     plt.show()
     return min_loss_index+1, max_accuracy_index+1
+
+# plot and save plot on client side
+def plot_loss_and_accuracy_client(client_id, data_type="random"):
+    # read data
+    df = pd.read_csv(f'histories/client_{data_type}_{client_id}/metrics.csv')
+    # Create a folder for the client
+    folder = f"images/client_{data_type}_{client_id}"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    # Extract data from DataFrame
+    rounds = df['Round']
+    loss = df['Loss']
+    accuracy = df['Accuracy']
+
+    # Plot loss and accuracy
+    plt.figure(figsize=(12, 6))
+    plt.plot(rounds, loss, label='Loss')
+    plt.plot(rounds, accuracy, label='Accuracy')
+
+    # Find the index (round) of minimum loss and maximum accuracy
+    min_loss_round = df.loc[loss.idxmin(), 'Round']
+    max_accuracy_round = df.loc[accuracy.idxmax(), 'Round']
+
+    # Print the rounds where min loss and max accuracy occurred
+    print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()}\n")
+
+    # Mark these points with a star
+    plt.scatter(min_loss_round, loss.min(), color='blue', marker='*', s=100, label='Min Loss')
+    plt.scatter(max_accuracy_round, accuracy.max(), color='orange', marker='*', s=100, label='Max Accuracy')
+
+    # Labels and title
+    plt.xlabel('Round')
+    plt.ylabel('Metrics')
+    plt.title(f'Client {client_id} Metrics (Validation Set)')
+    plt.legend()
+    plt.savefig(folder + f"/training_{rounds.iloc[-1]}_rounds.png")
+    plt.show()
+
+# save client metrics
+def save_client_metrics(round_num, loss, accuracy, client_id=1, data_type="random", tot_rounds=20):
+    # create folders
+    folder = f"histories/client_{data_type}_{client_id}/"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+    # file path
+    file_path = folder + f'metrics.csv'
+    # Check if the file exists; if not, create it and write headers
+    file_exists = os.path.isfile(file_path)
+    with open(file_path, 'a', newline='') as file:
+        writer = csv.writer(file)
+        
+        if not file_exists:
+            writer.writerow(['Round', 'Loss', 'Accuracy'])
+
+        # Write the metrics
+        writer.writerow([round_num, loss, accuracy])
+
+# function to check if metrics.csv exists otherwise delete it
+def check_and_delete_metrics_file(folder_path, question=False):
+    file_path = os.path.join(folder_path, 'metrics.csv')
+
+    if question:
+        # Check if the metrics.csv file exists
+        if os.path.exists(file_path):
+            # Ask the user if they want to delete the file
+            response = input(f"The file 'metrics.csv' already exists in '{folder_path}'. Do you want to delete it otherwise the client metrics will be appended, ruining the final plot? (y/n): ").lower()
+            
+            if response == 'y':
+                # Delete the file
+                os.remove(file_path)
+                print("The file 'metrics.csv' has been deleted.")
+            else:
+                print("The file 'metrics.csv' will remain unchanged.")
+    else:
+        # Delete the file
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print("The file 'metrics.csv' has been deleted.")
+
+
+

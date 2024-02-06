@@ -1,12 +1,17 @@
 #!/bin/bash
 
-echo "Starting server"
-python server.py --rounds 50 &  # set number of rounds HERE
-sleep 3 # Sleep for 3s to give the server enough time to start
+# SET VARIABLES
+n_rounds=500
+data_type="random"  # Options: "random", "cluster", "2cluster" "
+n_clients=3
 
-for i in $(seq 1 2); do   # set number of clients HERE
+echo "Starting server"
+python server.py --rounds $n_rounds --data_type $data_type & 
+sleep 3  # Sleep for 3s to give the server enough time to start
+
+for i in $(seq 1 $n_clients); do
     echo "Starting client $i"
-    python client.py --id "${i}" &
+    python client.py --id "${i}" --data_type $data_type &
 done
 
 # This will allow you to use CTRL+C to stop all background processes

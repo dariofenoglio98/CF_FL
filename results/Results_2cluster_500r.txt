@@ -1,0 +1,83 @@
+Server Side 
+Minimum Loss occurred at round 440 with a loss value of 0.5644449541004756 
+Maximum Accuracy occurred at round 434 with an accuracy value of 0.723738583722718
+
+
+Client 2 
+Minimum Loss occurred at round 17 with a loss value of 0.5768453478813171 
+Maximum Accuracy occurred at round 434 with an accuracy value of 0.7072596549987793
+
+
+Client 3 
+Minimum Loss occurred at round 476 with a loss value of 0.4176351726055145 
+Maximum Accuracy occurred at round 113 with an accuracy value of 0.8400365710258484
+
+
+Client 1 
+Minimum Loss occurred at round 240 with a loss value of 0.5371720194816589 
+Maximum Accuracy occurred at round 430 with an accuracy value of 0.7541083097457886
+
+
+
+Visualizing the results of the best model (2cluster) on the test set...
+--------------------------
+Patient 1: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighChol from 0.0 to 1.0
+Feature: AnyHealthcare from 0.0 to 1.0
+--------------------------
+Patient 2: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: HighChol from 1.0 to 0.0
+--------------------------
+Patient 3: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: PhysActivity from 0.0 to 1.0
+--------------------------
+Patient 4: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighBP from 0.0 to 1.0
+Feature: HighChol from 0.0 to 1.0
+Feature: DiffWalk from 0.0 to 1.0
+--------------------------
+Patient 5: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighBP from 0.0 to 1.0
+Feature: Veggies from 0.0 to 1.0
+Feature: DiffWalk from 0.0 to 1.0
+--------------------------
+Patient 6: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HeartDiseaseorAttack from 1.0 to 0.0
+Feature: PhysHlth from 30.0 to 0.0
+--------------------------
+Patient 7: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: HighChol from 1.0 to 0.0
+--------------------------
+Patient 8: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: Veggies from 0.0 to 1.0
+Feature: DiffWalk from 0.0 to 1.0
+--------------------------
+Patient 9: Diabetes level = 1
+Features to change to make the Diabetes level = 0
+Feature: HighBP from 1.0 to 0.0
+Feature: HighChol from 1.0 to 0.0
+Feature: Smoker from 1.0 to 0.0
+Feature: DiffWalk from 1.0 to 0.0
+--------------------------
+Patient 10: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighBP from 0.0 to 1.0
+--------------------------
+Patient 11: Diabetes level = 0
+Features to change to make the Diabetes level = 1
+Feature: HighBP from 0.0 to 1.0
+Feature: Smoker from 0.0 to 1.0
+Feature: PhysActivity from 0.0 to 1.0
+Feature: DiffWalk from 0.0 to 1.0
+Training time: 2.25 minutes
