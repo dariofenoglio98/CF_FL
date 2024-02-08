@@ -178,14 +178,16 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
     return model, train_loss, val_loss, acc, acc_prime, acc_val
 
 # evaluate
-def evaluate(model, X_test, y_test, loss_fn):
+def evaluate(model, X_test, y_test, loss_fn, X_train, y_train):
     model.eval()
     with torch.no_grad():
         H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test)
         loss_test = loss_fn(H_test, y_test)
         acc_test = (torch.argmax(H_test, dim=1) == y_test).float().mean().item()
-        
-    return loss_test.item(), acc_test
+
+        mean_distance = distance_train(x_prime.cpu(), X_train.cpu(), H2_test.cpu(), y_train.cpu()).numpy()
+    
+    return loss_test.item(), acc_test, mean_distance
 
 # load data
 def load_data(client_id="1",device="cpu", type='random'):
@@ -241,6 +243,70 @@ def evaluation_central_test(type="random", best_model_round=1):
     x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
  
+# distance metrics with training set
+def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: torch.Tensor):
+    """
+    mean_distance = distance_train(x_prime_test, X_train, H2_test, y_train)
+    """
+    X_y = torch.unique(torch.cat((b, y_set.unsqueeze(-1).float()), dim=-1), dim=0)
+    b = X_y[:, :b.shape[1]]
+    y_set = torch.nn.functional.one_hot(X_y[:, b.shape[1]:].to(torch.int64), 2).float().squeeze(1)
+    a_ext = a.repeat(b.shape[0], 1, 1).transpose(1, 0)
+    b_ext = b.repeat(a.shape[0], 1, 1)
+    dist = (a_ext != b_ext).sum(dim=-1, dtype=torch.float)
+    y_ext = y.repeat(y_set.shape[0], 1, 1).transpose(1, 0)
+    y_set_ext = y_set.repeat(y.shape[0], 1, 1)
+    filter = y_ext.argmax(dim=-1) != y_set_ext.argmax(dim=-1)
+    dist[filter] = a.shape[-1]
+    min_distances = torch.min(dist, dim=-1)[0]
+    return min_distances.mean()
+
+# evaluate distance with all training sets
+def evaluate_distance(type="random", best_model_round=1):
+    # check device
+    device = check_gpu(manual_seed=True, print_info=False)
+    
+    # load local client data
+    X_train_1, y_train_1, _, _, _, _, _ = load_data(client_id="1",device=device, type=type)
+    X_train_2, y_train_2, _, _, _, _, _ = load_data(client_id="2",device=device, type=type)
+    X_train_3, y_train_3, _, _, _, _, _ = load_data(client_id="3",device=device, type=type)
+    X_train, y_train = torch.cat((X_train_1, X_train_2, X_train_3)), torch.cat((y_train_1, y_train_2, y_train_3))
+    # load data
+    df_test = pd.read_csv("data/df_test_"+type+".csv").astype(int)
+    # Dataset split
+    X = df_test.drop('Diabetes_binary', axis=1)
+    y = df_test['Diabetes_binary']
+
+    # scale data
+    scaler = MinMaxScaler()
+    X_test = scaler.fit_transform(X)
+    X_test = torch.LongTensor(X_test).float().to(device)
+    y_test = torch.LongTensor(y.values).to(device)
+
+    # load model
+    model = Net(drop_prob=0.3).to(device)
+    model.load_state_dict(torch.load(f"checkpoints/{type}/model_round_{best_model_round}.pth"))
+    # evaluate
+    model.eval()
+    with torch.no_grad():
+        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
+    
+    # pass to cpus
+    x_prime =  x_prime.cpu()
+    H2_test = H2_test.cpu()
+    # evaluate distance
+    mean_distance = distance_train(x_prime, X_train.cpu(), H2_test, y_train.cpu()).numpy()
+    mean_distance_1 = distance_train(x_prime, X_train_1.cpu(), H2_test, y_train_1.cpu()).numpy()
+    mean_distance_2 = distance_train(x_prime, X_train_2.cpu(), H2_test, y_train_2.cpu()).numpy()
+    mean_distance_3 = distance_train(x_prime, X_train_3.cpu(), H2_test, y_train_3.cpu()).numpy()
+    print(f"\n\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
+    print(f"Mean distance with all training sets: {mean_distance}")
+    print(f"Mean distance with training set 1: {mean_distance_1}")
+    print(f"Mean distance with training set 2: {mean_distance_2}")
+    print(f"Mean distance with training set 3: {mean_distance_3}")
+    
+
+
  # visualize examples
 def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random"):
     print(f"\n\n\033[95mVisualizing the results of the best model ({data_type}) on the test set...\033[0m")
@@ -333,22 +399,26 @@ def plot_loss_and_accuracy_client(client_id, data_type="random"):
     rounds = df['Round']
     loss = df['Loss']
     accuracy = df['Accuracy']
+    mean_distance = df['Mean Distance']
 
     # Plot loss and accuracy
     plt.figure(figsize=(12, 6))
     plt.plot(rounds, loss, label='Loss')
     plt.plot(rounds, accuracy, label='Accuracy')
+    plt.plot(rounds, mean_distance, label='Mean Distance')
 
     # Find the index (round) of minimum loss and maximum accuracy
     min_loss_round = df.loc[loss.idxmin(), 'Round']
     max_accuracy_round = df.loc[accuracy.idxmax(), 'Round']
+    min_distance_round = df.loc[mean_distance.idxmin(), 'Round']
 
     # Print the rounds where min loss and max accuracy occurred
-    print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()}\n")
+    print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()} \nMinimum Distance occurred at round {min_distance_round} with a distance value of {mean_distance.min()}\n")
 
     # Mark these points with a star
     plt.scatter(min_loss_round, loss.min(), color='blue', marker='*', s=100, label='Min Loss')
     plt.scatter(max_accuracy_round, accuracy.max(), color='orange', marker='*', s=100, label='Max Accuracy')
+    plt.scatter(min_distance_round, mean_distance.min(), color='green', marker='*', s=100, label='Min Distance')
 
     # Labels and title
     plt.xlabel('Round')
@@ -359,7 +429,7 @@ def plot_loss_and_accuracy_client(client_id, data_type="random"):
     plt.show()
 
 # save client metrics
-def save_client_metrics(round_num, loss, accuracy, client_id=1, data_type="random", tot_rounds=20):
+def save_client_metrics(round_num, loss, accuracy, mean_distance, client_id=1, data_type="random", tot_rounds=20):
     # create folders
     folder = f"histories/client_{data_type}_{client_id}/"
     if not os.path.exists(folder):
@@ -372,10 +442,10 @@ def save_client_metrics(round_num, loss, accuracy, client_id=1, data_type="rando
         writer = csv.writer(file)
         
         if not file_exists:
-            writer.writerow(['Round', 'Loss', 'Accuracy'])
+            writer.writerow(['Round', 'Loss', 'Accuracy', 'Mean Distance'])
 
         # Write the metrics
-        writer.writerow([round_num, loss, accuracy])
+        writer.writerow([round_num, loss, accuracy, mean_distance])
 
 # function to check if metrics.csv exists otherwise delete it
 def check_and_delete_metrics_file(folder_path, question=False):

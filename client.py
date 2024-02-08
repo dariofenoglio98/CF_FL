@@ -40,10 +40,10 @@ class FlowerClient(fl.client.NumPyClient):
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
-        loss, accuracy = utils.evaluate(self.model, self.X_val, self.y_val, self.loss_fn)
+        loss, accuracy, mean_distance = utils.evaluate(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train)
         # save loss and accuracy client
-        utils.save_client_metrics(config["current_round"], loss, accuracy, self.client_id, self.data_type, config['tot_rounds'])
-        return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy)}
+        utils.save_client_metrics(config["current_round"], loss, accuracy, mean_distance, self.client_id, self.data_type, config['tot_rounds'])
+        return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(mean_distance)}
 
 
 # main

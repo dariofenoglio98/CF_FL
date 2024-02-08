@@ -134,8 +134,12 @@ def main() -> None:
 
     # Evaluate the model on the test set
     H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(type=args.data_type, best_model_round=best_loss_round)
+
     # visualize the results
     utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type)
+
+    # Evaluate distance with all training sets
+    utils.evaluate_distance(type=args.data_type, best_model_round=best_loss_round)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
