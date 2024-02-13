@@ -8,6 +8,27 @@ This training process employs Cross-silo Federated Learning, utilizing the Flowe
 ## Data Preparation
 In the `/data/client_split.ipynb` notebook, users have the option to split the dataset either randomly or through clustering, depending on the requirement of the federated learning scenario.
 
+## Requirements
+Before running the federated training, ensure to have the following libraries:
+- PyTorch: 2.2.0
+- Flower: 1.6.0
+- Numpy: 1.26.3
+- Pandas: 2.2.0
+- Matplotlib: 3.8.2
+- Sklearn: 1.4.0
+
+## Installation
+Clone this repository to your local machine:
+```
+git clone https://github.com/dariofenoglio98/CF_FL.git
+cd CF_FL
+```
+Install the required Python packages:
+```
+pip install -r requirements.txt
+```
+
+
 ## Components
 
 ### `Server.py`
