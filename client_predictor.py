@@ -33,20 +33,17 @@ class FlowerClient(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
-        model_trained, train_loss, val_loss, acc, acc_prime, acc_val = utils.train(
+        model_trained, loss_train, loss_val, acc_train, acc_val = utils.train_predictor(
             self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
             self.X_val, self.y_val, n_epochs=config["local_epochs"])
         return self.get_parameters(config), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
-        loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = utils.evaluate(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train)
+        loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn)
         # save loss and accuracy client
-        utils.save_client_metrics(config["current_round"], loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability,
-                                   self.client_id, self.data_type, config['tot_rounds'])
-        return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "proximity": float(mean_proximity),
-                                                          "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
-                                                          "iou": float(iou), "variability": float(variability)}
+        utils.save_client_metrics(config["current_round"], loss, accuracy, 0, self.client_id, self.data_type, config['tot_rounds'], predictor=True)
+        return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(0)}
 
 
 # main
@@ -69,33 +66,31 @@ def main()->None:
     args = parser.parse_args()
 
     # check if metrics.csv exists otherwise delete it
-    utils.check_and_delete_metrics_file(f"histories/client_{args.data_type}_{args.id}", question=False)
+    utils.check_and_delete_metrics_file(f"histories_predictor/client_{args.data_type}_{args.id}", question=False)
 
     # check gpu and set manual seed
     device = utils.check_gpu(manual_seed=True)
 
     # load data
-    #X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(client_id=str(args.id),device=device, type=args.data_type)
-    X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler = utils.load_data(
+    X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(
         client_id=str(args.id),device=device, type=args.data_type)
 
     # Hyperparameter
-    learning_rate = 1e-1
-    drop_prob = 0.3
+    learning_rate = 1e-2
 
     # Model
-    model = utils.Net(scaler, drop_prob).to(device)
+    model = utils.Predictor().to(device)
 
     # Optimizer and Loss function
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
     # Start Flower client
     client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type).to_client()
-    fl.client.start_client(server_address="[::]:8080", client=client) # local host
+    fl.client.start_client(server_address="[::]:8080", client=client) # my IP 10.21.13.112
     #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 
     # read saved data and plot
-    utils.plot_loss_and_accuracy_client(args.id, args.data_type)
+    utils.plot_loss_and_accuracy_client_predictor(args.id, args.data_type)
 
 
 
