@@ -525,25 +525,25 @@ def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: tor
     y_set = torch.nn.functional.one_hot(X_y[:, b.shape[1]:].to(torch.int64), 2).float().squeeze(1)
     a_ext = a.repeat(b.shape[0], 1, 1).transpose(1, 0)
     b_ext = b.repeat(a.shape[0], 1, 1)
-    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float)
+    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float) # !!!!! dist = (a_ext != b_ext).sum(dim=-1, dtype=torch.float)
     y_ext = y.repeat(y_set.shape[0], 1, 1).transpose(1, 0)
     y_set_ext = y_set.repeat(y.shape[0], 1, 1)
     filter = y_ext.argmax(dim=-1) != y_set_ext.argmax(dim=-1)
-    dist[filter] = 210
+    dist[filter] = 210 # !!!!! dist[filter] = a.shape[-1]; min_distances = torch.min(dist, dim=-1)[0]
     min_distances, min_index = torch.min(dist, dim=-1)
     return min_distances.mean()
 
 def variability(a: torch.Tensor, b: torch.Tensor):
-    bool_a = a
-    bool_b = b
+    bool_a = a # > 0.5   !!!!!!
+    bool_b = b # > 0.5
     unique_a = set([tuple(i) for i in bool_a.cpu().detach().numpy()])
     print(len(unique_a), a.shape[0])
     unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
     return len(unique_a) / len(unique_b) if len(unique_b) else -1
 
 def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
-    bool_a = a
-    bool_b = b
+    bool_a = a # > 0.5   !!!!!!
+    bool_b = b # > 0.5
     unique_a = set([tuple(i) for i in bool_a.cpu().detach().numpy()])
     unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
     intersection = unique_a.intersection(unique_b)
@@ -610,7 +610,7 @@ def evaluate_distance(type="random", best_model_round=1):
     print(f"\n\033[1;32mValidity Evaluation - Counterfactual:Training Set\033[0m")
     print(f"Counterfactual validity: {validity}")
 
-    # evaluate distance
+    # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
     mean_distance = distance_train(x_prime_rescaled, X_train_rescaled.cpu(), H2_test, y_train.cpu()).numpy()
     mean_distance_1 = distance_train(x_prime_rescaled, X_train_1_rescaled.cpu(), H2_test, y_train_1.cpu()).numpy()
     mean_distance_2 = distance_train(x_prime_rescaled, X_train_2_rescaled.cpu(), H2_test, y_train_2.cpu()).numpy()
