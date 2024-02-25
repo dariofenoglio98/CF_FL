@@ -42,7 +42,8 @@ class FlowerClient(fl.client.NumPyClient):
         self.set_parameters(parameters)
         loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn)
         # save loss and accuracy client
-        utils.save_client_metrics(config["current_round"], loss, accuracy, 0, self.client_id, self.data_type, config['tot_rounds'], predictor=True)
+        utils.save_client_metrics(config["current_round"], loss, accuracy, 0, client_id=self.client_id,
+                                  data_type=self.data_type, tot_rounds=config['tot_rounds'], predictor=True)
         return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(0)}
 
 
@@ -72,7 +73,7 @@ def main()->None:
     device = utils.check_gpu(manual_seed=True)
 
     # load data
-    X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(
+    X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler = utils.load_data(
         client_id=str(args.id),device=device, type=args.data_type)
 
     # Hyperparameter

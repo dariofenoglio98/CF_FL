@@ -129,7 +129,7 @@ def main() -> None:
     best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, predictor=True)
 
     # Evaluate the model on the test set
-    y_test_pred, accuracy = utils.evaluation_central_test(type=args.data_type, best_model_round=best_loss_round, predictor=True)
+    y_test_pred, accuracy = utils.evaluation_central_test(data_type=args.data_type, best_model_round=best_loss_round, predictor=True)
     print(f"Accuracy on test set: {accuracy}")
 
     # Print training time in minutes (grey color)

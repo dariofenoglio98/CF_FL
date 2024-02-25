@@ -462,7 +462,7 @@ def load_data(client_id="1",device="cpu", type='random'):
     X = df_train.drop('Diabetes_binary', axis=1)
     y = df_train['Diabetes_binary']
     # Use 10 % of total data as Test set and the rest as (Train + Validation) set 
-    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.001) # use only 0.1% of the data as test set - i dont perform validation on client test set
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.1) # use only 0.1% of the data as test set - i dont perform validation on client test set
     # Use 20 % of (Train + Validation) set as Validation set
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2)
     num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
@@ -474,15 +474,19 @@ def load_data(client_id="1",device="cpu", type='random'):
     X_val = torch.Tensor(X_val).float().to(device)
     y_train = torch.LongTensor(y_train.values).to(device)
     y_val = torch.LongTensor(y_val.values).to(device)
+    # add test set
+    X_test = scaler.transform(X_test.values)
+    X_test = torch.Tensor(X_test).float().to(device)
+    y_test = torch.LongTensor(y_test.values).to(device)
     return X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler
 
 # load test data
-def evaluation_central_test(type="random", best_model_round=1, predictor=False):
+def evaluation_central_test(data_type="random", best_model_round=1, predictor=False):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
     
     # load data
-    df_test = pd.read_csv("data/df_test_"+type+".csv")
+    df_test = pd.read_csv("data/df_test_"+data_type+".csv")
     df_test = df_test.astype(int)
     # Dataset split
     X = df_test.drop('Diabetes_binary', axis=1)
@@ -491,22 +495,24 @@ def evaluation_central_test(type="random", best_model_round=1, predictor=False):
     # scale data
     scaler = MinMaxScaler()
     X_test = scaler.fit_transform(X.values)
-    X_test = torch.LongTensor(X_test).float().to(device)
+    X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
     if predictor:
         model = Predictor().to(device)
-        model.load_state_dict(torch.load(f"checkpoints_predictor/{type}/model_round_{best_model_round}.pth"))
+        model.load_state_dict(torch.load(f"checkpoints_predictor/{data_type}/model_round_{best_model_round}.pth"))
         # evaluate
         model.eval()
         with torch.no_grad():
             y = model(X_test)
-            y = y.argmax(dim=1).detach().cpu().numpy()
-        return y, accuracy_score(y_test.cpu().numpy(), y)
+            #y = y.argmax(dim=1).detach().cpu().numpy()
+            acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
+        #return y, accuracy_score(y_test.cpu().numpy(), y)
+        return y, acc
     else:
         model = Net(scaler, drop_prob=0.3).to(device)
-        model.load_state_dict(torch.load(f"checkpoints/{type}/model_round_{best_model_round}.pth"))
+        model.load_state_dict(torch.load(f"checkpoints/{data_type}/model_round_{best_model_round}.pth"))
         # evaluate
         model.eval()
         with torch.no_grad():
@@ -551,19 +557,19 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     return len(intersection) / len(union) if len(union) else -1
 
 # evaluate distance with all training sets
-def evaluate_distance(type="random", best_model_round=1):
+def evaluate_distance(data_type="random", best_model_round=1):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
     mask = torch.Tensor([0,0,0,0,0,0,0,0,0,0,
                                     0,0,0,0,0,0,0,0,0,0,0])
     # load local client data
-    X_train_1, y_train_1, _, _, _, _, _, _ = load_data(client_id="1",device=device, type=type)
-    X_train_2, y_train_2, _, _, _, _, _, _ = load_data(client_id="2",device=device, type=type)
-    X_train_3, y_train_3, _, _, _, _, _, _ = load_data(client_id="3",device=device, type=type)
+    X_train_1, y_train_1, _, _, _, _, _, _ = load_data(client_id="1",device=device, type=data_type)
+    X_train_2, y_train_2, _, _, _, _, _, _ = load_data(client_id="2",device=device, type=data_type)
+    X_train_3, y_train_3, _, _, _, _, _, _ = load_data(client_id="3",device=device, type=data_type)
     X_train, y_train = torch.cat((X_train_1, X_train_2, X_train_3)), torch.cat((y_train_1, y_train_2, y_train_3))
     # load data
-    df_test = pd.read_csv("data/df_test_"+type+".csv").astype(int)
+    df_test = pd.read_csv("data/df_test_"+data_type+".csv").astype(int)
     # Dataset split
     X = df_test.drop('Diabetes_binary', axis=1)
     y = df_test['Diabetes_binary']
@@ -576,7 +582,7 @@ def evaluate_distance(type="random", best_model_round=1):
 
     # load model
     model = Net(scaler, drop_prob=0.3).to(device)
-    model.load_state_dict(torch.load(f"checkpoints/{type}/model_round_{best_model_round}.pth"))
+    model.load_state_dict(torch.load(f"checkpoints/{data_type}/model_round_{best_model_round}.pth"))
     # evaluate
     model.eval()
     with torch.no_grad():
@@ -760,9 +766,12 @@ def plot_loss_and_accuracy_client(client_id, data_type="random"):
 
 
 # save client metrics
-def save_client_metrics(round_num, loss, accuracy, validity, proximity, hamming_distance, euclidean_distance, iou, var, client_id=1, data_type="random", tot_rounds=20):
+def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None, hamming_distance=None, euclidean_distance=None, iou=None, var=None, client_id=1, data_type="random", tot_rounds=20, predictor=False):
     # create folders
-    folder = f"histories/client_{data_type}_{client_id}/"
+    if predictor:
+        folder = f"histories_predictor/client_{data_type}_{client_id}/"
+    else:
+        folder = f"histories/client_{data_type}_{client_id}/"
     if not os.path.exists(folder):
         os.makedirs(folder)
     # file path
