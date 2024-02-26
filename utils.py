@@ -238,9 +238,12 @@ class ConceptVCNet(nn.Module,):
         return out, x_reconstructed, q_cf, cond, out2
 
 # train vcnet
-def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500):
+def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False):
     train_loss = list()
     val_loss = list()
+    train_acc = list()
+    val_acc = list()
+    best_loss = 1000
 
     for epoch in range(1, n_epochs+1):
         model.train()
@@ -264,6 +267,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
         
         acc = (torch.argmax(H, dim=1) == y_train).float().mean().item()
         acc_prime = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
+        train_acc.append(acc)
         
         model.eval()
         with torch.no_grad():
@@ -273,18 +277,30 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
             acc_prime_val = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
             
             val_loss.append(loss_val.item())
+            val_acc.append(acc_val)
+            
+        
+        if save_best and val_loss[-1] < best_loss:
+            best_loss = val_loss[-1]
+            model_best = model
             
         if epoch % 50 == 0:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
                 epoch, n_epochs, loss.item(), acc*100, acc_prime*100, loss_val.item(), acc_val*100, acc_prime_val*100))
-            
-    return model, train_loss, val_loss, acc, acc_prime, acc_val
+
+    if save_best:
+        return model_best, train_loss, val_loss, train_acc, acc_prime, val_acc
+    else:  
+        return model, train_loss, val_loss, acc, acc_prime, acc_val
 
 
 # train our model
-def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500):
+def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False):
     train_loss = list()
+    train_acc = list()
     val_loss = list()
+    val_acc = list()
+    best_loss = 1000
 
     for epoch in range(1, n_epochs+1):
         model.train()
@@ -314,6 +330,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         
         acc = (torch.argmax(H, dim=1) == y_train).float().mean().item()
         acc_prime = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
+        train_acc.append(acc)
         
         model.eval()
         with torch.no_grad():
@@ -323,12 +340,20 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
             acc_prime_val = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
             
             val_loss.append(loss_val.item())
+            val_acc.append(acc_val)
+        
+        if save_best and val_loss[-1] < best_loss:
+            best_loss = val_loss[-1]
+            model_best = model
             
         if epoch % 50 == 0:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
                 epoch, n_epochs, loss.item(), acc*100, acc_prime*100, loss_val.item(), acc_val*100, acc_prime_val*100))
-            
-    return model, train_loss, val_loss, acc, acc_prime, acc_val
+    
+    if save_best:
+        return model_best, train_loss, val_loss, train_acc, acc_prime, val_acc
+    else:
+        return model, train_loss, val_loss, acc, acc_prime, acc_val
 
 # evaluate vcnet
 def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
@@ -386,7 +411,7 @@ def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n
             model_best = model
 
     if save_best:
-        return model_best, loss_train, loss_val, acc_train, acc_val
+        return model_best, loss_train, loss_val, acc_train, 0, acc_val
     else:
         return model, loss_train, loss_val, acc_train, 0, acc_val
 
@@ -456,7 +481,7 @@ def load_data(client_id="1",device="cpu", type='random'):
     return X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler
 
 # load test data
-def evaluation_central_test(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/"):
+def evaluation_central_test(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -491,7 +516,10 @@ def evaluation_central_test(data_type="random", best_model_round=1, model=None, 
     y_test = torch.LongTensor(y.values).to(device)
 
     model = model(scaler, drop_prob=0.3).to(device)
-    model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
+    if best_model_round == None:
+        model.load_state_dict(torch.load(model_path))
+    else:
+        model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
     # evaluate
     model.eval()
     with torch.no_grad():
@@ -506,7 +534,7 @@ def evaluation_central_test(data_type="random", best_model_round=1, model=None, 
     x_prime_rescaled = np.round(x_prime_rescaled)
     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
-def evaluation_central_test_predictor(data_type="random", best_model_round=1):    
+def evaluation_central_test_predictor(data_type="random", best_model_round=1, model_path=None):    
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -542,7 +570,10 @@ def evaluation_central_test_predictor(data_type="random", best_model_round=1):
 
     # load model
     model = Predictor().to(device)
-    model.load_state_dict(torch.load(f"checkpoints/predictor/{data_type}/model_round_{best_model_round}.pth"))
+    if best_model_round == None:
+        model.load_state_dict(torch.load(model_path))
+    else:
+        model.load_state_dict(torch.load(f"checkpoints/predictor/{data_type}/model_round_{best_model_round}.pth"))
     # evaluate
     model.eval()
     with torch.no_grad():
@@ -585,7 +616,7 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     return len(intersection) / len(union) if len(union) else -1
 
 # evaluate distance with all training sets
-def evaluate_distance(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/"):
+def evaluate_distance(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -622,7 +653,10 @@ def evaluate_distance(data_type="random", best_model_round=1, model=None, checkp
 
     # load model
     model = model(scaler, drop_prob=0.3).to(device)
-    model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
+    if best_model_round == None:
+        model.load_state_dict(torch.load(model_path))
+    else:
+        model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
     # evaluate
     model.eval()
     with torch.no_grad():
@@ -855,9 +889,9 @@ def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None
         writer.writerow([round_num, loss, accuracy, validity, proximity, hamming_distance, euclidean_distance, iou, var])
 
 # plot and save plot on client side
-def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", client_id=1):
+def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", client_id=1, image_folder="images/"):
     # Create a folder for the client
-    folder = f"images/client_predictor_centralized_{data_type}_{client_id}"
+    folder = image_folder + f"client_centralized_{data_type}_{client_id}"
     if not os.path.exists(folder):
         os.makedirs(folder)
 
