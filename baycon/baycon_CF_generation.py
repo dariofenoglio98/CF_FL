@@ -6,6 +6,7 @@ import baycon.time_measurement as time_measurement
 from common.DataAnalyzer import *
 from common.Target import Target
 import torch 
+import argparse
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
@@ -70,9 +71,9 @@ def prepare_model_and_data(categorical_features, client_id=1, data_type='random'
         pass
     # load model
     if client_id == "server":
-        model_filename = f"../checkpoints_predictor/{data_type}/model_round_{best_epoch}.pth"
+        model_filename = f"../checkpoints/predictor/{data_type}/model_round_{best_epoch}.pth"
     else:
-        model_filename = f"../checkpoints_predictor/{data_type}/centralized_predictor_client_{client_id}.pth"
+        model_filename = f"../checkpoints/predictor/{data_type}/centralized_predictor_client_{client_id}.pth"
     try:
         print("Checking if {} exists, loading...".format(model_filename))
         model = utils.Predictor()
@@ -169,12 +170,12 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     return len(intersection) / len(union) if len(union) else -1
 
 # evaluate all distances
-def evaluate_distance(X_test, y_test, y_pred_test, X_count, y_count, scaler, type="random", client_id="1"):
+def evaluate_distance(X_test, y_test, y_pred_test, X_count, y_count, scaler, data_type="random", client_id="1"):
     device = "cpu"
     # load local client data
-    X_train_1, y_train_1, _, _, _, _, _, _ = load_data(client_id="1",device=device, type=type)
-    X_train_2, y_train_2, _, _, _, _, _, _ = load_data(client_id="2",device=device, type=type)
-    X_train_3, y_train_3, _, _, _, _, _, _ = load_data(client_id="3",device=device, type=type)
+    X_train_1, y_train_1, _, _, _, _, _, _ = load_data(client_id="1",device=device, type=data_type)
+    X_train_2, y_train_2, _, _, _, _, _, _ = load_data(client_id="2",device=device, type=data_type)
+    X_train_3, y_train_3, _, _, _, _, _, _ = load_data(client_id="3",device=device, type=data_type)
     X_train, y_train = torch.cat((X_train_1, X_train_2, X_train_3)), torch.cat((y_train_1, y_train_2, y_train_3))
 
     # rescale data
@@ -249,16 +250,29 @@ def evaluate_distance(X_test, y_test, y_pred_test, X_count, y_count, scaler, typ
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Baycon")
+    parser.add_argument(
+        "--data_type",
+        type=str,
+        choices=['random','cluster', '2cluster'],
+        default='random',
+        help="Specifies the type of data partition",
+    )
+    parser.add_argument(
+        "--size_factor",
+        type=float,
+        default=0.001,
+        help="Specifies the percentange of the test set to be explained - to reduce the time of execution",
+    )
+    args = parser.parse_args()
     # define categorical features
     binary_features = ['HighBP','HighChol','CholCheck','Smoker','Stroke','HeartDiseaseorAttack',
     'PhysActivity','Fruits','Veggies','HvyAlcoholConsump','AnyHealthcare','NoDocbcCost','DiffWalk','Sex']
     actionable_features = []
     # data parameters
     client_list = [1,2,3, "server"] # 1, 2, 3, "server"
-    data_type = "random"
-    size_factor = 0.005
     # find the best federated global model
-    with open(f'../histories_predictor/server_{data_type}/metrics_500.json') as json_file:
+    with open(f'../histories/predictor/server_{args.data_type}/metrics_500.json') as json_file:
         data = json.load(json_file)
     # take the min loss model
     best_epoch = data['loss'].index(min(data['loss'])) + 1
@@ -267,9 +281,9 @@ if __name__ == "__main__":
     # execute baycon over the clients
     for client_id in client_list:
         print("\n\033[94m" + f"Client {client_id}" + "\033[0m")
-        model, X_train, y_train, X_test, y_test, feature_names, scaler = prepare_model_and_data(binary_features, client_id, data_type, best_epoch)
-        X_test = X_test[:int(len(X_test) * size_factor)]
-        y_test = y_test[:int(len(y_test) * size_factor)]
+        model, X_train, y_train, X_test, y_test, feature_names, scaler = prepare_model_and_data(binary_features, client_id, args.data_type, best_epoch)
+        X_test = X_test[:int(len(X_test) * args.size_factor)]
+        y_test = y_test[:int(len(y_test) * args.size_factor)]
         y_pred_test = model.predict(X_test).numpy()
         best_counterfactuals = list()
         print("Explaining {} instances".format(len(X_test)))
@@ -288,167 +302,13 @@ if __name__ == "__main__":
             )
             best_counterfactuals.append(best_instance)
 
-            #if i==3:
-            #    break
         print("Saving best counterfactuals")
         best_counterfactuals = np.array(best_counterfactuals)
-        np.save(f"best_counterfactuals_client_{data_type}_{client_id}.npy", best_counterfactuals)
+        np.save(f"best_counterfactuals_client_{args.data_type}_{client_id}.npy", best_counterfactuals)
         preds = model.predict(best_counterfactuals).numpy()
         print(preds, y_pred_test)
-        np.save(f"related_predictions_client_{data_type}_{client_id}.npy", preds)
+        np.save(f"related_predictions_client_{args.data_type}_{client_id}.npy", preds)
 
         # calculate metrics
-        evaluate_distance(X_test, y_test, y_pred_test, best_counterfactuals, preds, scaler, type=data_type, client_id=client_id)
+        evaluate_distance(X_test, y_test, y_pred_test, best_counterfactuals, preds, scaler, data_type=args.data_type, client_id=client_id)
             
-
-
-
-
-
-
-
-# import json
-# import pandas as pd
-# import baycon.bayesian_generator as baycon
-# import baycon.time_measurement as time_measurement
-# from common.DataAnalyzer import *
-# from common.Target import Target
-# import torch 
-# from tqdm import tqdm
-# # exit from the current folder
-# import os
-# import sys
-# sys.path.append(os.path.join(os.path.dirname("utils.py"), '..'))
-# import utils
-
-
-
-
-
-
-
-# # Prepare model and data
-# def prepare_model_and_data(categorical_features, client_id=1, data_type='random', best_epoch=1000, target_feature="Diabetes_binary"):
-#     # load data
-#     df_test = pd.read_csv(f"../data/df_test_{data_type}.csv").astype(int)
-#     # Dataset split
-#     X = df_test.drop('Diabetes_binary', axis=1).values
-#     y = df_test['Diabetes_binary'].values.ravel()
-#     # encode categorical features
-#     if categorical_features:
-#         X = encode(X, categorical_features)
-#     # load model
-#     if client_id == "server":
-#         model_filename = f"../checkpoints_predictor/{data_type}/model_round_{best_epoch}.pth"
-#     else:
-#         model_filename = f"../checkpoints_predictor/{data_type}/centralized_predictor_client_{client_id}.pth"
-#     try:
-#         print("Checking if {} exists, loading...".format(model_filename))
-#         model = utils.Predictor()
-#         model.load_state_dict(torch.load(model_filename))
-#         print("Loaded model")
-#     except FileNotFoundError:
-#         print("Not found, You need to train the model to explain")
-         
-#     feature_names = df_test.columns[df_test.columns != target_feature]
-#     return model, X, y, feature_names
-
-# # Execute baycon
-# def execute(model, X, Y, feature_names, dataset_name, target, initial_instance_index, categorical_features=[], actionable_features=[], client_id="server", data_type="random", best_epoch=1000):
-#     run = 0
-#     model_name = "NN"
-#     data_analyzer = DataAnalyzer(X, Y, feature_names, target, categorical_features, actionable_features)
-#     X, Y = data_analyzer.data()
-#     initial_instance = X[initial_instance_index]
-#     initial_prediction = Y[initial_instance_index]
-#     if False:
-#         print("--- Executing: {} Initial Instance: {} Target: {} Model: {} Run: {} ---".format(
-#             dataset_name,
-#             initial_instance_index,
-#             target.target_value_as_string(),
-#             model_name,
-#             run
-#         ))
-#     counterfactuals, ranker, best_instance = baycon.run(initial_instance, initial_prediction, target, data_analyzer, model)
-#     predictions = np.array([])
-#     try:
-#         predictions = model.predict(counterfactuals)
-#     except ValueError:
-#         pass
-#     output = {
-#         "initial_instance": initial_instance.tolist(),
-#         "initial_prediction": str(initial_prediction),
-#         "categorical_features": categorical_features,
-#         "actionable_features": actionable_features,
-#         "target_type": target.target_type(),
-#         "target_value": target.target_value(),
-#         "target_feature": target.target_feature(),
-#         "total_time": str(time_measurement.total_time),
-#         "time_to_first_solution": str(time_measurement.time_to_first_solution),
-#         "time_to_best_solution": str(time_measurement.time_to_best_solution),
-#         "counterfactuals": counterfactuals.tolist(),
-#         "predictions": predictions.tolist()
-#     }
-
-#     output_filename = "{}_{}_{}_{}_{}_{}.json".format("bcg", dataset_name, initial_instance_index,
-#                                                       target.target_value_as_string(), model_name, run)
-#     if False:
-#         with open(output_filename, 'w') as outfile:
-#             json.dump(output, outfile)
-#         print("--- Finished: saved file {}\n".format(output_filename))
-
-#     return counterfactuals, predictions, initial_instance, initial_prediction, data_analyzer, ranker, model, best_instance
-
-
-# if __name__ == "__main__":
-#     # define categorical features
-#     binary_features = ['Diabetes_binary','HighBP','HighChol','CholCheck','Smoker','Stroke','HeartDiseaseorAttack',
-#     'PhysActivity','Fruits','Veggies','HvyAlcoholConsump','AnyHealthcare','NoDocbcCost','DiffWalk','Sex']
-#     # data parameters
-#     client_list = [1, 2, 3, "server"]
-#     data_type = "random"
-#     size_factor = 0.2
-#     # find the best federated global model
-#     with open(f'../histories_predictor/server_{data_type}/metrics_1000.json') as json_file:
-#         data = json.load(json_file)
-#     # take the min loss model
-#     best_epoch = data['loss'].index(min(data['loss'])) + 1
-#     print(f"Best model at epoch {best_epoch}")
-
-#     # execute baycon over the clients
-#     for client_id in client_list:
-#         print("\033[94m" + f"Client {client_id}" + "\033[0m")
-#         model, X, Y, feature_names = prepare_model_and_data(binary_features, client_id, data_type, best_epoch)
-#         X = X[:int(len(X) * size_factor)]
-#         Y = Y[:int(len(Y) * size_factor)]
-#         best_counterfactuals = list()
-#         print("Explaining {} instances".format(len(X)))
-#         # execute baycon over the test set
-#         for i in tqdm(range(len(X))):
-#             # define target
-#             t = Target(target_type="classification", target_feature="Diabetes_binary", target_value= 1 if Y[i] == 0 else 0)
-#             counterfactuals, predictions, initial_instance, initial_prediction, data_analyzer, ranker, model, best_instance = execute(
-#                 model, X, Y, feature_names,
-#                 dataset_name="diabetes_random_client_1",
-#                 target=t,
-#                 initial_instance_index=i,
-#                 categorical_features=binary_features,
-#                 actionable_features=[],
-#                 client_id=client_id,
-#                 data_type=data_type,
-#                 best_epoch=best_epoch
-#             )
-#             best_counterfactuals.append(best_instance)
-
-#             if i==5:
-#                 break
-#         print("Saving best counterfactuals")
-#         best_counterfactuals = np.array(best_counterfactuals)
-#         np.save(f"best_counterfactuals_client_{data_type}_{client_id}.npy", best_counterfactuals)
-#         preds = model.predict(best_counterfactuals).numpy()
-#         np.save(f"related_predictions_client_{data_type}_{client_id}.npy", preds)
-
-
-# # calculate metrics
-
-        

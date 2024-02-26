@@ -48,7 +48,7 @@ def main()->None:
             model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=args.n_epochs, save_best=True)
         
         # Save model
-        torch.save(model.state_dict(), f"checkpoints_predictor/{args.data_type}/centralized_predictor_client_{client_id}.pth")
+        torch.save(model.state_dict(), f"checkpoints/predictor/{args.data_type}/centralized_predictor_client_{client_id}.pth")
 
         # Plot loss and accuracy using the previous lists
         utils.plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type=args.data_type, client_id=client_id)

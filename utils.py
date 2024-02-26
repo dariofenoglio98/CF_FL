@@ -157,7 +157,7 @@ class Net(nn.Module,):
 
 class ConceptVCNet(nn.Module,):
     def __init__(self, scaler=None, drop_prob=0.3):
-        super(Net, self).__init__()
+        super(ConceptVCNet, self).__init__()
 
         self.drop_prob = drop_prob
         self.fc1 = nn.Linear(21, 512)
@@ -165,9 +165,9 @@ class ConceptVCNet(nn.Module,):
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 64)
         self.fc5 = nn.Linear(64, 2)
-        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.decoder = torch.nn.Sequential(torch.nn.Linear(20, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
+        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
+        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
+        self.decoder = torch.nn.Sequential(torch.nn.Linear(20 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
         
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=self.drop_prob)
@@ -215,11 +215,11 @@ class ConceptVCNet(nn.Module,):
         x_reconstructed = self.decoder(zy_cf)
 
         if not self.training:
-            x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1.03)
-            x_prime_reconstructed = self.scaler.inverse_transform(x_prime_reconstructed.detach().cpu().numpy())
-            x_prime_reconstructed = np.round(x_prime_reconstructed)
-            x_prime_reconstructed = self.scaler.transform(x_prime_reconstructed)
-            x_prime_reconstructed = torch.Tensor(x_prime_reconstructed).to(x.device)
+            x_reconstructed = torch.clamp(x_reconstructed, min=0, max=1.03)
+            x_reconstructed = self.scaler.inverse_transform(x_reconstructed.detach().cpu().numpy())
+            x_reconstructed = np.round(x_reconstructed)
+            x_reconstructed = self.scaler.transform(x_reconstructed)
+            x_reconstructed = torch.Tensor(x_reconstructed).to(x.device)
 
         out2 = self.fc1(x_reconstructed)
         out2 = self.relu(out2)
@@ -280,6 +280,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
             
     return model, train_loss, val_loss, acc, acc_prime, acc_val
 
+
 # train our model
 def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500):
     train_loss = list()
@@ -299,7 +300,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         lambda1 = 3 # loss parameter for kl divergence p-q and p_prime-q_prime
         lambda2 = 12 # loss parameter for input reconstruction
         lambda3 = 1 # loss parameter for validity of counterfactuals
-        lambda4 = 10 # loss parameter for creating counterfactuals that are closer to the initial input
+        lambda4 = 1.5 # loss parameter for creating counterfactuals that are closer to the initial input
         #             increasing it, decrease the validity of counterfactuals. It is expected and makes sense.
         #             It is a design choice to have better counterfactuals or closer counterfactuals.
         loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_q_d
@@ -346,6 +347,8 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
         X_test_rescaled = model.scaler.inverse_transform(X_test.detach().cpu().numpy())
         X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
 
+        validity = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
+
         # proximity = distance_train(x_prime_rescaled, X_train_rescaled, H2_test.cpu(), y_train.cpu()).numpy()
         proximity = 0
         hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
@@ -353,7 +356,7 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
         iou = intersection_over_union(x_prime_rescaled, X_train_rescaled)
         var = variability(x_prime_rescaled, X_train_rescaled)
     
-    return loss_test.item(), acc_test, proximity, hamming_distance, euclidean_distance, iou, var
+    return loss_test.item(), acc_test, validity, proximity, hamming_distance, euclidean_distance, iou, var
 
 # train predictor
 def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False):
@@ -385,7 +388,7 @@ def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n
     if save_best:
         return model_best, loss_train, loss_val, acc_train, acc_val
     else:
-        return model, loss_train, loss_val, acc_train, acc_val
+        return model, loss_train, loss_val, acc_train, 0, acc_val
 
 # evaluate our model
 def evaluate(model, X_test, y_test, loss_fn, X_train, y_train):
@@ -453,7 +456,57 @@ def load_data(client_id="1",device="cpu", type='random'):
     return X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler
 
 # load test data
-def evaluation_central_test(data_type="random", best_model_round=1, predictor=False):
+def evaluation_central_test(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/"):
+    # check device
+    device = check_gpu(manual_seed=True, print_info=False)
+
+    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type)
+    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type)
+    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type)
+
+    X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
+    X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
+
+    X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
+    X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
+
+    X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
+    X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
+
+    X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
+                                torch.cat((y_train_1, y_train_2, y_train_3)))
+    
+    # load data
+    df_test = pd.read_csv("data/df_test_"+data_type+".csv")
+    df_test = df_test.astype(int)
+    # Dataset split
+    X = df_test.drop('Diabetes_binary', axis=1)
+    y = df_test['Diabetes_binary']
+
+    # scale data
+    scaler = MinMaxScaler()
+    X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
+    X_test = scaler.transform(X.values)
+    X_test = torch.Tensor(X_test).float().to(device)
+    y_test = torch.LongTensor(y.values).to(device)
+
+    model = model(scaler, drop_prob=0.3).to(device)
+    model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
+    # evaluate
+    model.eval()
+    with torch.no_grad():
+        if model.__class__.__name__ == "Net":
+            H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
+        elif model.__class__.__name__ == "ConceptVCNet":
+            H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False)
+            x_prime = x_reconstructed
+    X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
+    X_test_rescaled = np.round(X_test_rescaled)
+    x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
+    x_prime_rescaled = np.round(x_prime_rescaled)
+    return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
+
+def evaluation_central_test_predictor(data_type="random", best_model_round=1):    
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -488,29 +541,14 @@ def evaluation_central_test(data_type="random", best_model_round=1, predictor=Fa
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
-    if predictor:
-        model = Predictor().to(device)
-        model.load_state_dict(torch.load(f"checkpoints_predictor/{data_type}/model_round_{best_model_round}.pth"))
-        # evaluate
-        model.eval()
-        with torch.no_grad():
-            y = model(X_test)
-            #y = y.argmax(dim=1).detach().cpu().numpy()
-            acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
-        #return y, accuracy_score(y_test.cpu().numpy(), y)
-        return y, acc
-    else:
-        model = Net(scaler, drop_prob=0.3).to(device)
-        model.load_state_dict(torch.load(f"checkpoints/{data_type}/model_round_{best_model_round}.pth"))
-        # evaluate
-        model.eval()
-        with torch.no_grad():
-            H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
-        X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
-        X_test_rescaled = np.round(X_test_rescaled)
-        x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
-        x_prime_rescaled = np.round(x_prime_rescaled)
-        return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
+    model = Predictor().to(device)
+    model.load_state_dict(torch.load(f"checkpoints/predictor/{data_type}/model_round_{best_model_round}.pth"))
+    # evaluate
+    model.eval()
+    with torch.no_grad():
+        y = model(X_test)
+        acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
+    return y, acc
 
 # distance metrics with training set
 def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: torch.Tensor):
@@ -547,7 +585,7 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     return len(intersection) / len(union) if len(union) else -1
 
 # evaluate distance with all training sets
-def evaluate_distance(data_type="random", best_model_round=1):
+def evaluate_distance(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/"):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -583,12 +621,16 @@ def evaluate_distance(data_type="random", best_model_round=1):
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
-    model = Net(scaler, drop_prob=0.3).to(device)
-    model.load_state_dict(torch.load(f"checkpoints/{data_type}/model_round_{best_model_round}.pth"))
+    model = model(scaler, drop_prob=0.3).to(device)
+    model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
     # evaluate
     model.eval()
     with torch.no_grad():
-        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+        if model.__class__.__name__ == "Net":
+            H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+        elif model.__class__.__name__ == "ConceptVCNet":
+            H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
+            x_prime = x_reconstructed
 
     x_prime_rescaled = model.scaler.inverse_transform(x_prime.detach().cpu().numpy())
     x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
@@ -675,11 +717,8 @@ def check_gpu(manual_seed=True, print_info=True):
     return device
 
 # plot and save plot on server side
-def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", predictor=False):
-    if predictor:
-        folder = f"images_predictor/server_side_{data_type}/"
-    else:
-        folder = f"images/server_side_{data_type}/"
+def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", image_folder="images/"):
+    folder = image_folder + f"/server_side_{data_type}/"
     # check if folder exists
     if not os.path.exists(folder):
         os.makedirs(folder)
@@ -712,12 +751,12 @@ def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", predictor
     plt.show()
     return min_loss_index+1, max_accuracy_index+1
 
-# plot and save plot on client side
-def plot_loss_and_accuracy_client(client_id, data_type="random"):
+# plot and save plot on client side    # to be removed
+def plot_loss_and_accuracy_client_net(client_id, data_type="random"):
     # read data
-    df = pd.read_csv(f'histories/client_{data_type}_{client_id}/metrics.csv')
+    df = pd.read_csv(f'histories/net/client_{data_type}_{client_id}/metrics.csv')
     # Create a folder for the client
-    folder = f"images/client_{data_type}_{client_id}"
+    folder = f"images/net/client_{data_type}_{client_id}"
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -754,14 +793,52 @@ def plot_loss_and_accuracy_client(client_id, data_type="random"):
     plt.savefig(folder + f"/training_{rounds.iloc[-1]}_rounds.png")
     plt.show()
 
+# plot and save plot on client side
+def plot_loss_and_accuracy_client(client_id, data_type="random", history_folder="histories/", image_folder="images/"):
+    # read data
+    df = pd.read_csv(history_folder + f'client_{data_type}_{client_id}/metrics.csv')
+    # Create a folder for the client
+    folder = image_folder + f"client_{data_type}_{client_id}"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    # Extract data from DataFrame
+    rounds = df['Round']
+    loss = df['Loss']
+    accuracy = df['Accuracy']
+    validity = df['Validity']
+
+    # Plot loss and accuracy
+    plt.figure(figsize=(12, 6))
+    plt.plot(rounds, loss, label='Loss')
+    plt.plot(rounds, accuracy, label='Accuracy')
+    plt.plot(rounds, validity, label='Validity')
+
+    # Find the index (round) of minimum loss and maximum accuracy
+    min_loss_round = df.loc[loss.idxmin(), 'Round']
+    max_accuracy_round = df.loc[accuracy.idxmax(), 'Round']
+    max_validity_round = df.loc[validity.idxmax(), 'Round']
+
+    # Print the rounds where min loss and max accuracy occurred
+    print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()} \nValidity occurred at round {max_validity_round} with a validity value of {validity.max()}\n")
+
+    # Mark these points with a star
+    plt.scatter(min_loss_round, loss.min(), color='blue', marker='*', s=100, label='Min Loss')
+    plt.scatter(max_accuracy_round, accuracy.max(), color='orange', marker='*', s=100, label='Max Accuracy')
+    plt.scatter(max_validity_round, validity.max(), color='green', marker='*', s=100, label='Min Distance')
+
+    # Labels and title
+    plt.xlabel('Round')
+    plt.ylabel('Metrics')
+    plt.title(f'Client {client_id} Metrics (Validation Set)')
+    plt.legend()
+    plt.savefig(folder + f"/training_{rounds.iloc[-1]}_rounds.png")
+    plt.show()
 
 # save client metrics
-def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None, hamming_distance=None, euclidean_distance=None, iou=None, var=None, client_id=1, data_type="random", tot_rounds=20, predictor=False):
+def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None, hamming_distance=None, euclidean_distance=None, iou=None, var=None, client_id=1, data_type="random", tot_rounds=20, history_folder="histories/"):
     # create folders
-    if predictor:
-        folder = f"histories_predictor/client_{data_type}_{client_id}/"
-    else:
-        folder = f"histories/client_{data_type}_{client_id}/"
+    folder = history_folder + f"client_{data_type}_{client_id}/"
     if not os.path.exists(folder):
         os.makedirs(folder)
     # file path
@@ -808,11 +885,11 @@ def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", cl
     plt.savefig(folder + f"/validation_metrics.png")
     plt.show()
 
-def plot_loss_and_accuracy_client_predictor(client_id, data_type="random"):
+def plot_loss_and_accuracy_client_predictor(client_id, data_type="random", history_folder="histories/", image_folder="images/"):
     # read data
-    df = pd.read_csv(f'histories_predictor/client_{data_type}_{client_id}/metrics.csv')
+    df = pd.read_csv(history_folder + f'client_{data_type}_{client_id}/metrics.csv')
     # Create a folder for the client
-    folder = f"images_predictor/client_{data_type}_{client_id}"
+    folder = image_folder + f"client_{data_type}_{client_id}"
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -869,7 +946,7 @@ def check_and_delete_metrics_file(folder_path, question=False):
 
 # predictor 
 class Predictor(nn.Module):
-    def __init__(self, input_dim=21, output_dim=2):
+    def __init__(self, scaler=None, drop_prob=None, input_dim=21, output_dim=2):
         super(Predictor, self).__init__()
         self.fc1 = nn.Linear(input_dim, 512)
         self.fc2 = nn.Linear(512, 256)
@@ -894,4 +971,51 @@ class Predictor(nn.Module):
         return torch.argmax(self.forward(torch.tensor(x, dtype=torch.float32)), dim=1)
         self.forward(torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x.float())
 
+# Dictionary of models
+models = {
+    "net": Net,
+    "vcnet": ConceptVCNet,
+    "predictor": Predictor
+}
+
+# Dictionary of trainings
+trainings = {
+    "net": train,
+    "vcnet": train_vcnet,
+    "predictor": train_predictor
+}
+
+# Dictionary of evaluations
+evaluations = {
+    "net": evaluate,
+    "vcnet": evaluate_vcnet,
+    "predictor": evaluate_predictor
+}
+
+# Dictionary of checkpoint folders
+checkpoints = {
+    "net": "checkpoints/net/",
+    "vcnet": "checkpoints/vcnet/",
+    "predictor": "checkpoints/predictor/"
+}
+
+# Dictionary of histories folders
+histories = {
+    "net": "histories/net/",
+    "vcnet": "histories/vcnet/",
+    "predictor": "histories/predictor/"
+}
+
+images = {
+    "net": "images/net/",
+    "vcnet": "images/vcnet/",
+    "predictor": "images/predictor/"
+}
+
+# Dictionary of plot functions
+plot_functions = {
+    "net": plot_loss_and_accuracy_client,
+    "vcnet": plot_loss_and_accuracy_client, # same as net
+    "predictor": plot_loss_and_accuracy_client_predictor
+}
 
