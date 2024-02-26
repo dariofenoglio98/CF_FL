@@ -34,14 +34,15 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 # Custom strategy to save model after each round
 class SaveModelStrategy(fl.server.strategy.FedAvg):
-    def __init__(self, model, data_type, *args, **kwargs):
+    def __init__(self, model, data_type, checkpoint_folder, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
         self.data_type = data_type
+        self.checkpoint_folder = checkpoint_folder
 
         # create folder if not exists
-        if not os.path.exists(f"checkpoints/{self.data_type}"):
-            os.makedirs(f"checkpoints/{self.data_type}")
+        if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
+            os.makedirs(self.checkpoint_folder + f"{self.data_type}")
 
     # Override aggregate_fit method to add saving functionality
     def aggregate_fit(
@@ -65,7 +66,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             self.model.load_state_dict(state_dict, strict=True)
             # Save the model
-            torch.save(self.model.state_dict(), f"checkpoints/{self.data_type}/model_round_{server_round}.pth")
+            torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
 
         return aggregated_parameters, aggregated_metrics
 
@@ -88,6 +89,13 @@ def main() -> None:
         default='random',
         help="Specifies the type of data partition",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default='net',
+        choices=['net','vcnet', 'predictor'],
+        help="Specifies the model to be trained",
+    )
     args = parser.parse_args()
 
     # Start time
@@ -96,10 +104,16 @@ def main() -> None:
     # Parameters
     drop_prob = 0.3
 
+    # model and history folder
+    model = utils.models[args.model]
+    history_folder = utils.histories[args.model]
+    checkpoint_folder = utils.checkpoints[args.model]
+    images_folder = utils.images[args.model]
+
     # Define strategy
     #strategy = fl.server.strategy.FedAvg(  # traditional FedAvg, no saving
     strategy = SaveModelStrategy(
-        model=utils.Net(drop_prob=drop_prob),
+        model=model(drop_prob=drop_prob),
         min_fit_clients=3, # Never sample less than 10 clients for training
         min_evaluate_clients=3,  # Never sample less than 5 clients for evaluation
         min_available_clients=3, # Wait until all 10 clients are available
@@ -109,6 +123,7 @@ def main() -> None:
         on_evaluate_config_fn=fit_config,
         on_fit_config_fn=fit_config,
         data_type=args.data_type,
+        checkpoint_folder=checkpoint_folder,
     )
 
     # Start Flower server for three rounds of federated learning
@@ -124,22 +139,25 @@ def main() -> None:
     # Save loss and accuracy to a file
     print(f"Saving metrics to as .json in histories folder...")
     # # check if folder exists and save metrics
-    if not os.path.exists(f"histories/server_{args.data_type}"):
-        os.makedirs(f"histories/server_{args.data_type}")
-    with open(f'histories/server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
+    if not os.path.exists(history_folder + f"server_{args.data_type}"):
+        os.makedirs(history_folder + f"server_{args.data_type}")
+    with open(history_folder + f'server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
         json.dump({'loss': loss, 'accuracy': accuracy}, f)
  
     # Plot
-    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type)
+    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, images_folder)
 
     # Evaluate the model on the test set
-    H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, best_model_round=best_loss_round)
-
-    # visualize the results
-    utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type)
-
-    # Evaluate distance with all training sets
-    utils.evaluate_distance(data_type=args.data_type, best_model_round=best_loss_round)
+    if args.model == 'predictor':
+        y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, best_model_round=best_loss_round)
+        print(f"Accuracy on test set: {accuracy}")
+    else:
+        H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, 
+                                                best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder)
+        # visualize the results
+        utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type)
+        # Evaluate distance with all training sets
+        utils.evaluate_distance(data_type=args.data_type, best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")

@@ -11,7 +11,7 @@ import json
 
 # Define Flower client
 class FlowerClient(fl.client.NumPyClient):
-    def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, client_id, data_type):
+    def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, client_id, data_type, train_fn, evaluate_fn, history_folder):
         self.model = model
         self.X_train = X_train
         self.y_train = y_train
@@ -22,6 +22,9 @@ class FlowerClient(fl.client.NumPyClient):
         self.num_examples = num_examples
         self.client_id = client_id
         self.data_type = data_type
+        self.train_fn = train_fn
+        self.evaluate_fn = evaluate_fn
+        self.history_folder = history_folder
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
@@ -33,20 +36,28 @@ class FlowerClient(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
-        model_trained, train_loss, val_loss, acc, acc_prime, acc_val = utils.train(
+        model_trained, train_loss, val_loss, acc, acc_prime, acc_val = self.train_fn(
             self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
             self.X_val, self.y_val, n_epochs=config["local_epochs"])
         return self.get_parameters(config), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
-        loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = utils.evaluate(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train)
-        # save loss and accuracy client
-        utils.save_client_metrics(config["current_round"], loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability,
-                                   self.client_id, self.data_type, config['tot_rounds'])
-        return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "proximity": float(mean_proximity),
-                                                          "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
-                                                          "iou": float(iou), "variability": float(variability)}
+        if self.model.__class__.__name__ == "Predictor":
+            loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn)
+            # save loss and accuracy client
+            utils.save_client_metrics(config["current_round"], loss, accuracy, 0, client_id=self.client_id,
+                                    data_type=self.data_type, tot_rounds=config['tot_rounds'], history_folder=self.history_folder)
+            return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(0)}
+
+        else:
+            loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = self.evaluate_fn(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train)
+            # save loss and accuracy client
+            utils.save_client_metrics(config["current_round"], loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability,
+                                    self.client_id, self.data_type, config['tot_rounds'], self.history_folder)
+            return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "proximity": float(mean_proximity),
+                                                            "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
+                                                            "iou": float(iou), "variability": float(variability)}
 
 
 # main
@@ -66,16 +77,30 @@ def main()->None:
         default='random',
         help="Specifies the type of data partition",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default='net',
+        choices=['net','vcnet', 'predictor'],
+        help="Specifies the model to be trained",
+    )
     args = parser.parse_args()
 
+    # model and history folder
+    model = utils.models[args.model]
+    train_fn = utils.trainings[args.model]
+    evaluate_fn = utils.evaluations[args.model]
+    history_folder = utils.histories[args.model]
+    images_folder = utils.images[args.model]
+    plot_fn = utils.plot_functions[args.model]
+
     # check if metrics.csv exists otherwise delete it
-    utils.check_and_delete_metrics_file(f"histories/client_{args.data_type}_{args.id}", question=False)
+    utils.check_and_delete_metrics_file(history_folder + f"client_{args.data_type}_{args.id}", question=False)
 
     # check gpu and set manual seed
     device = utils.check_gpu(manual_seed=True)
 
     # load data
-    #X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(client_id=str(args.id),device=device, type=args.data_type)
     X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler = utils.load_data(
         client_id=str(args.id),device=device, type=args.data_type)
 
@@ -84,18 +109,18 @@ def main()->None:
     drop_prob = 0.3
 
     # Model
-    model = utils.Net(scaler, drop_prob).to(device)
+    model = model(scaler=scaler, drop_prob=drop_prob).to(device)
 
     # Optimizer and Loss function
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
     # Start Flower client
-    client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type).to_client()
+    client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type, train_fn, evaluate_fn, history_folder).to_client()
     fl.client.start_client(server_address="[::]:8080", client=client) # local host
     #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 
     # read saved data and plot
-    utils.plot_loss_and_accuracy_client(args.id, args.data_type)
+    plot_fn(args.id, args.data_type, history_folder, images_folder)
 
 
 
