@@ -28,7 +28,7 @@ def main()->None:
     # load data
     for client_id in range(1, 4):
         print(f"Client {client_id} loading data...")
-        X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(
+        X_train, y_train, X_val, y_val, X_test, y_test, num_examples, sampler = utils.load_data(
             client_id=str(client_id),device=device, type=args.data_type)
 
         # Hyperparameter

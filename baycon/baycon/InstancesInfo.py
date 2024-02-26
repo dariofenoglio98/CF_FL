@@ -8,20 +8,28 @@ MINIMUM_SCORE_Y = 0.1
 
 
 class InstancesInfo:
-    def __init__(self, instances, score_calculator, model):
+    def __init__(self, instances, score_calculator, model, scaler, round=True):
         self._model = model
         self._newBest = True
         self._instances = instances
+        self.round = round
         self._scores = np.array([])
         self._scores_x = np.array([])
         self._scores_y = np.array([])
         self._scores_f = np.array([])
         self._score_calculator = score_calculator
+        self._scaler = scaler
+        if round:
+            tmp_instance = self._scaler.inverse_transform(self._instances)
+            tmp_instance = np.round(tmp_instance)
+            tmp_instance = self._scaler.transform(tmp_instance)
+            self._instances = tmp_instance
         if not len(instances):
             return
         self.calculate_objective_all()
 
     def calculate_objective_all(self):
+        # TO ADD scaler and pass self._instances scaled, rounded and rescaled, same as in the other model
         predictions = np.array(self._model.predict(self._instances))
         self._scores, self._scores_x, self._scores_y, self._scores_f = self._score_calculator.fitness_score(
             self._instances, predictions)
@@ -48,6 +56,11 @@ class InstancesInfo:
         if self._newBest:
             time_measurement.best()
         self._instances = np.concatenate((self._instances, instances))
+        if self.round:
+            tmp_instance = self._scaler.inverse_transform(self._instances)
+            tmp_instance = np.round(tmp_instance)
+            tmp_instance = self._scaler.transform(tmp_instance)
+            self._instances = tmp_instance
         self._scores = np.concatenate((self._scores, scores), axis=None)
         self._scores_x = np.concatenate((self._scores_x, scores_x), axis=None)
         self._scores_y = np.concatenate((self._scores_y, scores_y), axis=None)

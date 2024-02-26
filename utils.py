@@ -46,13 +46,13 @@ class Net(nn.Module,):
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 64)
         self.fc5 = nn.Linear(64, 2)
-        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.decoder = torch.nn.Sequential(torch.nn.Linear(20, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
-        self.concept_mean_z3_predictor = torch.nn.Sequential(torch.nn.Linear(20 + 21 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.concept_var_z3_predictor = torch.nn.Sequential(torch.nn.Linear(20 + 21 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.concept_mean_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(20 + 21 + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.concept_var_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(20 + 21 + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
+        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.decoder = torch.nn.Sequential(torch.nn.Linear(32, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
+        self.concept_mean_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_mean_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
         
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=self.drop_prob)
@@ -128,7 +128,7 @@ class Net(nn.Module,):
 
         mask[:, self.binary_feature] = (mask[:, self.binary_feature] > 0.5).float()
         
-        x_prime_reconstructed = x_prime_reconstructed * (1 - mask) + (x * mask) #
+        # x_prime_reconstructed = x_prime_reconstructed * (1 - mask) + (x * mask) #
         #x_prime_reconstructed[:, self.binary_feature] = torch.sigmoid(x_prime_reconstructed[:, self.binary_feature])
         #x_prime_reconstructed[:, ~self.binary_feature] = torch.clamp(x_prime_reconstructed[:, ~self.binary_feature], min=0, max=1)
         #x_prime_reconstructed = x_prime_reconstructed * (1 - self.mask) + (x * self.mask)
@@ -296,10 +296,10 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         loss_p_d = torch.distributions.kl_divergence(p, p_prime).mean() 
         loss_q_d = torch.distributions.kl_divergence(q, q_prime).mean() 
 
-        lambda1 = 2 # loss parameter for kl divergence p-q and p_prime-q_prime
-        lambda2 = 10 # loss parameter for input reconstruction
-        lambda3 = 0.5 # loss parameter for validity of counterfactuals
-        lambda4 = 1.5 # loss parameter for creating counterfactuals that are closer to the initial input
+        lambda1 = 3 # loss parameter for kl divergence p-q and p_prime-q_prime
+        lambda2 = 12 # loss parameter for input reconstruction
+        lambda3 = 1 # loss parameter for validity of counterfactuals
+        lambda4 = 10 # loss parameter for creating counterfactuals that are closer to the initial input
         #             increasing it, decrease the validity of counterfactuals. It is expected and makes sense.
         #             It is a design choice to have better counterfactuals or closer counterfactuals.
         loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_q_d
@@ -354,34 +354,6 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
         var = variability(x_prime_rescaled, X_train_rescaled)
     
     return loss_test.item(), acc_test, proximity, hamming_distance, euclidean_distance, iou, var
-
-# evaluate our model
-def evaluate(model, X_test, y_test, loss_fn, X_train, y_train):
-    model.eval()
-    with torch.no_grad():
-        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
-        loss_test = loss_fn(H_test, y_test)
-        acc_test = (torch.argmax(H_test, dim=1) == y_test).float().mean().item()
-
-        x_prime_rescaled = model.scaler.inverse_transform(x_prime.detach().cpu().numpy())
-        x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-
-        X_train_rescaled = model.scaler.inverse_transform(X_train.detach().cpu().numpy())
-        X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
-
-        X_test_rescaled = model.scaler.inverse_transform(X_test.detach().cpu().numpy())
-        X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
-
-        validity = (torch.argmax(H2_test, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
-
-        # proximity = distance_train(x_prime_rescaled, X_train_rescaled, H2_test.cpu(), y_train.cpu()).numpy()
-        proximity = 0
-        hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
-        euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
-        iou = intersection_over_union(x_prime_rescaled, X_train_rescaled)
-        var = variability(x_prime_rescaled, X_train_rescaled)
-    
-    return loss_test.item(), acc_test, validity, proximity, hamming_distance, euclidean_distance, iou, var
 
 # train predictor
 def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False):
@@ -484,6 +456,22 @@ def load_data(client_id="1",device="cpu", type='random'):
 def evaluation_central_test(data_type="random", best_model_round=1, predictor=False):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
+
+    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type)
+    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type)
+    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type)
+
+    X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
+    X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
+
+    X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
+    X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
+
+    X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
+    X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
+
+    X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
+                                torch.cat((y_train_1, y_train_2, y_train_3)))
     
     # load data
     df_test = pd.read_csv("data/df_test_"+data_type+".csv")
@@ -494,7 +482,8 @@ def evaluation_central_test(data_type="random", best_model_round=1, predictor=Fa
 
     # scale data
     scaler = MinMaxScaler()
-    X_test = scaler.fit_transform(X.values)
+    X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
+    X_test = scaler.transform(X.values)
     X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y.values).to(device)
 
@@ -518,7 +507,9 @@ def evaluation_central_test(data_type="random", best_model_round=1, predictor=Fa
         with torch.no_grad():
             H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
         X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
+        X_test_rescaled = np.round(X_test_rescaled)
         x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
+        x_prime_rescaled = np.round(x_prime_rescaled)
         return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
 # distance metrics with training set
@@ -543,7 +534,6 @@ def variability(a: torch.Tensor, b: torch.Tensor):
     bool_a = a # > 0.5   !!!!!!
     bool_b = b # > 0.5
     unique_a = set([tuple(i) for i in bool_a.cpu().detach().numpy()])
-    print(len(unique_a), a.shape[0])
     unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
     return len(unique_a) / len(unique_b) if len(unique_b) else -1
 
@@ -564,10 +554,21 @@ def evaluate_distance(data_type="random", best_model_round=1):
     mask = torch.Tensor([0,0,0,0,0,0,0,0,0,0,
                                     0,0,0,0,0,0,0,0,0,0,0])
     # load local client data
-    X_train_1, y_train_1, _, _, _, _, _, _ = load_data(client_id="1",device=device, type=data_type)
-    X_train_2, y_train_2, _, _, _, _, _, _ = load_data(client_id="2",device=device, type=data_type)
-    X_train_3, y_train_3, _, _, _, _, _, _ = load_data(client_id="3",device=device, type=data_type)
-    X_train, y_train = torch.cat((X_train_1, X_train_2, X_train_3)), torch.cat((y_train_1, y_train_2, y_train_3))
+    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type)
+    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type)
+    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type)
+
+    X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
+    X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
+
+    X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
+    X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
+
+    X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
+    X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
+
+    X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
+                                torch.cat((y_train_1, y_train_2, y_train_3)))
     # load data
     df_test = pd.read_csv("data/df_test_"+data_type+".csv").astype(int)
     # Dataset split
@@ -576,8 +577,9 @@ def evaluate_distance(data_type="random", best_model_round=1):
 
     # scale data
     scaler = MinMaxScaler()
-    X_test = scaler.fit_transform(X.values)
-    X_test = torch.LongTensor(X_test).float().to(device)
+    X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
+    X_test = scaler.transform(X.values)
+    X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
@@ -590,18 +592,6 @@ def evaluate_distance(data_type="random", best_model_round=1):
 
     x_prime_rescaled = model.scaler.inverse_transform(x_prime.detach().cpu().numpy())
     x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-
-    X_train_rescaled = model.scaler.inverse_transform(X_train.detach().cpu().numpy())
-    X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
-
-    X_train_1_rescaled = model.scaler.inverse_transform(X_train_1.detach().cpu().numpy())
-    X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
-
-    X_train_2_rescaled = model.scaler.inverse_transform(X_train_2.detach().cpu().numpy())
-    X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
-
-    X_train_3_rescaled = model.scaler.inverse_transform(X_train_3.detach().cpu().numpy())
-    X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
 
     X_test_rescaled = model.scaler.inverse_transform(X_test.detach().cpu().numpy())
     X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SET VARIABLES
-n_rounds=50
+n_rounds=200
 data_type="random"  # Options: "random", "cluster", "2cluster" "
 n_clients=3
 

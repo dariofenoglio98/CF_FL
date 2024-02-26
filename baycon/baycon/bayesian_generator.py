@@ -34,7 +34,7 @@ def filter_outliers(counterfactuals, data_analyzer):
     return counterfactuals
 
 
-def run(initial_instance, initial_prediction, target: Target, data_analyzer, model):
+def run(initial_instance, initial_prediction, target: Target, data_analyzer, model, scaler):
 
     #print('--- Step 0: Load internal objects ---')
 
@@ -55,7 +55,7 @@ def run(initial_instance, initial_prediction, target: Target, data_analyzer, mod
     # --- BOOTSTRAP ---
     #print('--- Step 1: Generate initial neighbours ---')
     instances = generator.generate_initial_neighbours()
-    globalInstancesInfo = InstancesInfo(instances, score_calculator, model)
+    globalInstancesInfo = InstancesInfo(instances, score_calculator, model, scaler)
     instances, scores, _, _, _ = globalInstancesInfo.info()
     global_counterfactuals = globalInstancesInfo.counterfactuals()
     #print("Generated initial neighbours: ({}) CFs ({})".format(len(instances), len(global_counterfactuals)))
@@ -106,7 +106,7 @@ def run(initial_instance, initial_prediction, target: Target, data_analyzer, mod
 
         # rank aka acquisition function
         ranked_instances = ranker.rank(globalInstancesInfo.instances(), instances_to_check)
-        iterationInstancesInfo = InstancesInfo(ranked_instances, score_calculator, model)
+        iterationInstancesInfo = InstancesInfo(ranked_instances, score_calculator, model, scaler)
         counterfactuals = iterationInstancesInfo.counterfactuals()
         #print("Predicted top: {} Counterfactuals: {}".format(len(ranked_instances), len(counterfactuals)))
 
@@ -137,7 +137,7 @@ def run(initial_instance, initial_prediction, target: Target, data_analyzer, mod
 
     # perform final check in instances
     #print("--- Step 3: Final check on promising alternatives ({}) ---".format(len(promising_instances)))
-    lastCheckInstancesInfo = InstancesInfo(promising_instances, score_calculator, model)
+    lastCheckInstancesInfo = InstancesInfo(promising_instances, score_calculator, model, scaler)
     counterfactuals = lastCheckInstancesInfo.counterfactuals()
     #print(
     #    "From promising pool: ({}) Found counterfactuals: ({})".format(len(promising_instances), len(counterfactuals)))
@@ -145,6 +145,9 @@ def run(initial_instance, initial_prediction, target: Target, data_analyzer, mod
 
     global_counterfactuals = globalInstancesInfo.counterfactuals()
     global_counterfactuals = filter_outliers(global_counterfactuals, data_analyzer)
+
+    globalInstancesInfo = InstancesInfo(global_counterfactuals, score_calculator, model, scaler)
+    best_instance, best_score, best_score_x, best_score_y, best_score_f = globalInstancesInfo.best()
 
     time_measurement.finish()
 

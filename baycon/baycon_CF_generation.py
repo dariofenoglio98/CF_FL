@@ -85,7 +85,7 @@ def prepare_model_and_data(categorical_features, client_id=1, data_type='random'
     return model, X_train, y_train, X_test, y_test, feature_names, scaler
 
 # Execute baycon
-def execute(model, X_train, y_train, X_test, y_test, feature_names, dataset_name, target, initial_instance_index, categorical_features=[], actionable_features=[]):
+def execute(model, X_train, y_train, X_test, y_test, feature_names, scaler, dataset_name, target, initial_instance_index, categorical_features=[], actionable_features=[]):
     run = 0
     model_name = "NN"
     data_analyzer = DataAnalyzer(X_train, y_train, feature_names, target, categorical_features, actionable_features)
@@ -100,11 +100,13 @@ def execute(model, X_train, y_train, X_test, y_test, feature_names, dataset_name
             model_name,
             run
         ))
-    counterfactuals, ranker, best_instance = baycon.run(initial_instance, initial_prediction, target, data_analyzer, model)
+    counterfactuals, ranker, best_instance = baycon.run(initial_instance, initial_prediction, target, data_analyzer, model, scaler)
+    print(best_instance, initial_instance)
     predictions = np.array([])
     try:
         predictions = model.predict(counterfactuals)
     except ValueError:
+        print("Exception in model.predict")
         pass
     output = {
         "initial_instance": initial_instance.tolist(),
@@ -248,7 +250,7 @@ def evaluate_distance(X_test, y_test, y_pred_test, X_count, y_count, scaler, typ
 
 if __name__ == "__main__":
     # define categorical features
-    binary_features = ['Diabetes_binary','HighBP','HighChol','CholCheck','Smoker','Stroke','HeartDiseaseorAttack',
+    binary_features = ['HighBP','HighChol','CholCheck','Smoker','Stroke','HeartDiseaseorAttack',
     'PhysActivity','Fruits','Veggies','HvyAlcoholConsump','AnyHealthcare','NoDocbcCost','DiffWalk','Sex']
     actionable_features = []
     # data parameters
@@ -256,7 +258,7 @@ if __name__ == "__main__":
     data_type = "random"
     size_factor = 0.005
     # find the best federated global model
-    with open(f'../histories_predictor/server_{data_type}/metrics_2000.json') as json_file:
+    with open(f'../histories_predictor/server_{data_type}/metrics_500.json') as json_file:
         data = json.load(json_file)
     # take the min loss model
     best_epoch = data['loss'].index(min(data['loss'])) + 1
@@ -277,7 +279,7 @@ if __name__ == "__main__":
             y = model.predict(X_test[i].reshape(1, -1)).numpy()
             t = Target(target_type="classification", target_feature="Diabetes_binary", target_value= 1 if y == 0 else 0)
             counterfactuals, predictions, initial_instance, initial_prediction, data_analyzer, ranker, model, best_instance = execute(  
-                model, X_train, y_train, X_test, y_test, feature_names, 
+                model, X_train, y_train, X_test, y_test, feature_names, scaler,
                 dataset_name="diabetes_random_client_1",
                 target=t,
                 initial_instance_index=i,
@@ -292,6 +294,7 @@ if __name__ == "__main__":
         best_counterfactuals = np.array(best_counterfactuals)
         np.save(f"best_counterfactuals_client_{data_type}_{client_id}.npy", best_counterfactuals)
         preds = model.predict(best_counterfactuals).numpy()
+        print(preds, y_pred_test)
         np.save(f"related_predictions_client_{data_type}_{client_id}.npy", preds)
 
         # calculate metrics
