@@ -157,7 +157,7 @@ class Net(nn.Module,):
 
 class ConceptVCNet(nn.Module,):
     def __init__(self, scaler=None, drop_prob=0.3):
-        super(Net, self).__init__()
+        super(ConceptVCNet, self).__init__()
 
         self.drop_prob = drop_prob
         self.fc1 = nn.Linear(21, 512)
@@ -165,9 +165,9 @@ class ConceptVCNet(nn.Module,):
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 64)
         self.fc5 = nn.Linear(64, 2)
-        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.decoder = torch.nn.Sequential(torch.nn.Linear(20, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
+        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
+        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
+        self.decoder = torch.nn.Sequential(torch.nn.Linear(20 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
         
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=self.drop_prob)
@@ -215,11 +215,11 @@ class ConceptVCNet(nn.Module,):
         x_reconstructed = self.decoder(zy_cf)
 
         if not self.training:
-            x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1.03)
-            x_prime_reconstructed = self.scaler.inverse_transform(x_prime_reconstructed.detach().cpu().numpy())
-            x_prime_reconstructed = np.round(x_prime_reconstructed)
-            x_prime_reconstructed = self.scaler.transform(x_prime_reconstructed)
-            x_prime_reconstructed = torch.Tensor(x_prime_reconstructed).to(x.device)
+            x_reconstructed = torch.clamp(x_reconstructed, min=0, max=1.03)
+            x_reconstructed = self.scaler.inverse_transform(x_reconstructed.detach().cpu().numpy())
+            x_reconstructed = np.round(x_reconstructed)
+            x_reconstructed = self.scaler.transform(x_reconstructed)
+            x_reconstructed = torch.Tensor(x_reconstructed).to(x.device)
 
         out2 = self.fc1(x_reconstructed)
         out2 = self.relu(out2)
