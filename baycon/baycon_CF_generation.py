@@ -270,7 +270,7 @@ if __name__ == "__main__":
     'PhysActivity','Fruits','Veggies','HvyAlcoholConsump','AnyHealthcare','NoDocbcCost','DiffWalk','Sex']
     actionable_features = []
     # data parameters
-    client_list = [1,2,3, "server"] # 1, 2, 3, "server"
+    client_list = [1,2,3, "server"] # 1, 2, 3, "server"    #add server_1
     # find the best federated global model
     with open(f'../histories/predictor/server_{args.data_type}/metrics_500.json') as json_file:
         data = json.load(json_file)
