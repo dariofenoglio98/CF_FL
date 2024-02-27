@@ -145,7 +145,7 @@ def main() -> None:
         json.dump({'loss': loss, 'accuracy': accuracy}, f)
  
     # Plot
-    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, images_folder)
+    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, images_folder, show=False)
 
     # Evaluate the model on the test set
     if args.model == 'predictor':

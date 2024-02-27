@@ -38,7 +38,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.set_parameters(parameters)
         model_trained, train_loss, val_loss, acc, acc_prime, acc_val = self.train_fn(
             self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
-            self.X_val, self.y_val, n_epochs=config["local_epochs"])
+            self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False)
         return self.get_parameters(config), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
@@ -120,7 +120,7 @@ def main()->None:
     #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 
     # read saved data and plot
-    plot_fn(args.id, args.data_type, history_folder, images_folder)
+    plot_fn(args.id, args.data_type, history_folder, images_folder, show=False)
 
 
 
