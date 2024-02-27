@@ -15,9 +15,9 @@ for data_type in "${data_types[@]}"; do
     for model in "${models[@]}"; do
         # Set the number of epochs based on the model
         if [ "$model" = "predictor" ]; then
-            n_epochs=1000
+            n_epochs=200
         else
-            n_epochs=500
+            n_epochs=100
         fi
         
         # Run the Python script with the current combination of parameters

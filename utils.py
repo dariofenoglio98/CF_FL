@@ -37,29 +37,25 @@ def randomize_class(a, include=True):
 # Model
 EPS = 1e-9
 class Net(nn.Module,):
-    def __init__(self, scaler=None, drop_prob=0.3):
+    def __init__(self, scaler=None, config=None):
         super(Net, self).__init__()
-        
-        self.drop_prob = drop_prob
-        self.fc1 = nn.Linear(21, 512)
+        self.fc1 = nn.Linear(config['input_dim'], 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 64)
-        self.fc5 = nn.Linear(64, 2)
-        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(21, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.decoder = torch.nn.Sequential(torch.nn.Linear(32, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
-        self.concept_mean_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.concept_var_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.concept_mean_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.concept_var_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + 21 + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.fc5 = nn.Linear(64, config['output_dim'])
+        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(config['input_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(config['input_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.decoder = torch.nn.Sequential(torch.nn.Linear(32, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, config['input_dim']))
+        self.concept_mean_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_mean_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
         
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=self.drop_prob)
-        self.mask = torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,
-                                  0,0,0,0,0,0,0,1,1,1,1]), requires_grad=False)   #self.mask.to('cuda')
-        self.binary_feature = torch.nn.Parameter(torch.Tensor(
-                            [1,1,1,0,1,1,1,1,1,1,1,1,1,0,0,0,1,1,0,0,0]).bool(), requires_grad=False)
+        self.dropout = nn.Dropout(p=config['drop_prob'])
+        self.mask = config['mask']   
+        self.binary_feature = config['binary_feature']
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -156,25 +152,22 @@ class Net(nn.Module,):
         return out, x_reconstructed, qz2_x, p_z2, out2, x_prime_reconstructed, qz3_z2_c_y_y_prime, pz3_z2_c_y, y_prime
 
 class ConceptVCNet(nn.Module,):
-    def __init__(self, scaler=None, drop_prob=0.3):
+    def __init__(self, scaler=None, config=None):
         super(ConceptVCNet, self).__init__()
 
-        self.drop_prob = drop_prob
-        self.fc1 = nn.Linear(21, 512)
+        self.fc1 = nn.Linear(config["input_dim"], 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 64)
         self.fc5 = nn.Linear(64, 2)
         self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
         self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.decoder = torch.nn.Sequential(torch.nn.Linear(20 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 21))
+        self.decoder = torch.nn.Sequential(torch.nn.Linear(20 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, config["input_dim"]))
         
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=self.drop_prob)
-        self.mask = torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,
-                                  0,0,0,0,0,0,0,1,1,1,1]), requires_grad=False)   #self.mask.to('cuda')
-        self.binary_feature = torch.nn.Parameter(torch.Tensor(
-                            [1,1,1,0,1,1,1,1,1,1,1,1,1,0,0,0,1,1,0,0,0]).bool(), requires_grad=False)
+        self.dropout = nn.Dropout(p=config['drop_prob'])
+        self.mask = config['mask']
+        self.binary_feature = config['binary_feature']
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -238,7 +231,7 @@ class ConceptVCNet(nn.Module,):
         return out, x_reconstructed, q_cf, cond, out2
 
 # train vcnet
-def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True):
+def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
     train_loss = list()
     val_loss = list()
     train_acc = list()
@@ -253,8 +246,8 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
         loss_kl = torch.distributions.kl_divergence(p, q).mean()
         loss_rec = F.mse_loss(x_reconstructed, X_train, reduction='mean')
 
-        lambda1 = 2 # loss parameter for kl divergence p-q and p_prime-q_prime
-        lambda2 = 10 # loss parameter for input reconstruction
+        lambda1 = config["lambda1"] # loss parameter for kl divergence p-q and p_prime-q_prime
+        lambda2 = config["lambda2"] # loss parameter for input reconstruction
 
         loss = loss_task + lambda1*loss_kl + lambda2*loss_rec 
 
@@ -296,7 +289,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
 
 
 # train our model
-def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True):
+def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
     train_loss = list()
     train_acc = list()
     val_loss = list()
@@ -314,10 +307,10 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         loss_p_d = torch.distributions.kl_divergence(p, p_prime).mean() 
         loss_q_d = torch.distributions.kl_divergence(q, q_prime).mean() 
 
-        lambda1 = 3 # loss parameter for kl divergence p-q and p_prime-q_prime
-        lambda2 = 12 # loss parameter for input reconstruction
-        lambda3 = 1 # loss parameter for validity of counterfactuals
-        lambda4 = 1.5 # loss parameter for creating counterfactuals that are closer to the initial input
+        lambda1 = config["lambda1"] # loss parameter for kl divergence p-q and p_prime-q_prime
+        lambda2 = config["lambda2"] # loss parameter for input reconstruction
+        lambda3 = config["lambda3"] # loss parameter for validity of counterfactuals
+        lambda4 = config["lambda4"] # loss parameter for creating counterfactuals that are closer to the initial input
         #             increasing it, decrease the validity of counterfactuals. It is expected and makes sense.
         #             It is a design choice to have better counterfactuals or closer counterfactuals.
         loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_q_d
@@ -386,7 +379,7 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
     return loss_test.item(), acc_test, validity, proximity, hamming_distance, euclidean_distance, iou, var
 
 # train predictor
-def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True):
+def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, confit=None):
     acc_train,loss_train, acc_val, loss_val = [], [], [], []
     best_loss = 1000
     for epoch in range(n_epochs):
@@ -455,16 +448,17 @@ def evaluate_predictor(model, X_test, y_test, loss_fn):
     return loss.item(), acc
 
 # load data
-def load_data(client_id="1",device="cpu", type='random'):
+def load_data(client_id="1",device="cpu", type='random', dataset="diabetes"):
     # load data
-    #df_train = pd.read_csv('data/df_split_random2.csv')
-    df_train = pd.read_csv(f'data/df_split_{type}_{client_id}.csv')
+    df_train = pd.read_csv(f'data/df_{dataset}_{type}_{client_id}.csv')
+    if dataset == "breast":
+        df_train = df_train.drop(columns=["Unnamed: 0"])
     df_train = df_train.astype(int)
     # Dataset split
-    X = df_train.drop('Diabetes_binary', axis=1)
-    y = df_train['Diabetes_binary']
+    X = df_train.drop('Labels', axis=1)
+    y = df_train['Labels']
     # Use 10 % of total data as Test set and the rest as (Train + Validation) set 
-    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.01) # use only 0.1% of the data as test set - i dont perform validation on client test set
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.001) # use only 0.1% of the data as test set - i dont perform validation on client test set
     # Use 20 % of (Train + Validation) set as Validation set
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2)
     num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
@@ -483,13 +477,13 @@ def load_data(client_id="1",device="cpu", type='random'):
     return X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler
 
 # load test data
-def evaluation_central_test(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None):
+def evaluation_central_test(data_type="random", dataset="diabetes", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None, config=None):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
-    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type)
-    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type)
-    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type)
+    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
+    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
+    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
 
     X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
     X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
@@ -504,11 +498,13 @@ def evaluation_central_test(data_type="random", best_model_round=1, model=None, 
                                 torch.cat((y_train_1, y_train_2, y_train_3)))
     
     # load data
-    df_test = pd.read_csv("data/df_test_"+data_type+".csv")
+    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
+    if dataset == "breast":
+        df_test = df_test.drop(columns=["Unnamed: 0"])
     df_test = df_test.astype(int)
     # Dataset split
-    X = df_test.drop('Diabetes_binary', axis=1)
-    y = df_test['Diabetes_binary']
+    X = df_test.drop('Labels', axis=1)
+    y = df_test['Labels']
 
     # scale data
     scaler = MinMaxScaler()
@@ -517,7 +513,7 @@ def evaluation_central_test(data_type="random", best_model_round=1, model=None, 
     X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y.values).to(device)
 
-    model = model(scaler, drop_prob=0.3).to(device)
+    model = model(scaler, config).to(device)
     if best_model_round == None:
         model.load_state_dict(torch.load(model_path))
     else:
@@ -536,13 +532,13 @@ def evaluation_central_test(data_type="random", best_model_round=1, model=None, 
     x_prime_rescaled = np.round(x_prime_rescaled)
     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
-def evaluation_central_test_predictor(data_type="random", best_model_round=1, model_path=None):    
+def evaluation_central_test_predictor(data_type="random", dataset="diabetes", best_model_round=1, model_path=None):    
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
-    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type)
-    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type)
-    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type)
+    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
+    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
+    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
 
     X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
     X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
@@ -557,11 +553,13 @@ def evaluation_central_test_predictor(data_type="random", best_model_round=1, mo
                                 torch.cat((y_train_1, y_train_2, y_train_3)))
     
     # load data
-    df_test = pd.read_csv("data/df_test_"+data_type+".csv")
+    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
+    if dataset == "breast":
+        df_test = df_test.drop(columns=["Unnamed: 0"])
     df_test = df_test.astype(int)
     # Dataset split
-    X = df_test.drop('Diabetes_binary', axis=1)
-    y = df_test['Diabetes_binary']
+    X = df_test.drop('Labels', axis=1)
+    y = df_test['Labels']
 
     # scale data
     scaler = MinMaxScaler()
@@ -571,7 +569,8 @@ def evaluation_central_test_predictor(data_type="random", best_model_round=1, mo
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
-    model = Predictor().to(device)
+    config = config_tests[dataset]["predictor"]
+    model = Predictor(config=config).to(device)
     if best_model_round == None:
         model.load_state_dict(torch.load(model_path))
     else:
@@ -618,16 +617,15 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     return len(intersection) / len(union) if len(union) else -1
 
 # evaluate distance with all training sets
-def evaluate_distance(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None):
+def evaluate_distance(data_type="random", dataset="diabetes", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None, config=None):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
-    mask = torch.Tensor([0,0,0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0,0,0,0])
+    mask = config['mask_evaluation']
     # load local client data
-    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type)
-    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type)
-    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type)
+    X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
+    X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
+    X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
 
     X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
     X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
@@ -641,10 +639,12 @@ def evaluate_distance(data_type="random", best_model_round=1, model=None, checkp
     X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
                                 torch.cat((y_train_1, y_train_2, y_train_3)))
     # load data
-    df_test = pd.read_csv("data/df_test_"+data_type+".csv").astype(int)
+    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
+    if dataset == "breast":
+        df_test = df_test.drop(columns=["Unnamed: 0"])
     # Dataset split
-    X = df_test.drop('Diabetes_binary', axis=1)
-    y = df_test['Diabetes_binary']
+    X = df_test.drop('Labels', axis=1)
+    y = df_test['Labels']
 
     # scale data
     scaler = MinMaxScaler()
@@ -654,7 +654,7 @@ def evaluate_distance(data_type="random", best_model_round=1, model=None, checkp
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
-    model = model(scaler, drop_prob=0.3).to(device)
+    model = model(scaler, config).to(device)
     if best_model_round == None:
         model.load_state_dict(torch.load(model_path))
     else:
@@ -707,13 +707,22 @@ def evaluate_distance(data_type="random", best_model_round=1, model=None, checkp
     print('Variability: {:.2f}'.format(var))
 
  # visualize examples
-def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random"):
-    print(f"\n\n\033[95mVisualizing the results of the best model ({data_type}) on the test set...\033[0m")
-    features = ['HighBP', 'HighChol', 'CholCheck', 'BMI', 'Smoker',
-    'Stroke', 'HeartDiseaseorAttack', 'PhysActivity', 'Fruits', 'Veggies',
-    'HvyAlcoholConsump', 'AnyHealthcare', 'NoDocbcCost', 'GenHlth',
-    'MentHlth', 'PhysHlth', 'DiffWalk', 'Sex', 'Age', 'Education',
-    'Income']   
+def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random", dataset="diabetes"):
+    print(f"\n\n\033[95mVisualizing the results of the best model ({data_type}) on the test set ({dataset})...\033[0m")
+    if dataset == "diabetes":
+        features = ['HighBP', 'HighChol', 'CholCheck', 'BMI', 'Smoker',
+        'Stroke', 'HeartDiseaseorAttack', 'PhysActivity', 'Fruits', 'Veggies',
+        'HvyAlcoholConsump', 'AnyHealthcare', 'NoDocbcCost', 'GenHlth',
+        'MentHlth', 'PhysHlth', 'DiffWalk', 'Sex', 'Age', 'Education',
+        'Income']  
+    elif dataset == "breast":
+        features = ['radius1', 'texture1', 'perimeter1', 'area1',
+       'smoothness1', 'compactness1', 'concavity1', 'concave_points1',
+       'symmetry1', 'fractal_dimension1', 'radius2', 'texture2', 'perimeter2',
+       'area2', 'smoothness2', 'compactness2', 'concavity2', 'concave_points2',
+       'symmetry2', 'fractal_dimension2', 'radius3', 'texture3', 'perimeter3',
+       'area3', 'smoothness3', 'compactness3', 'concavity3', 'concave_points3',
+       'symmetry3', 'fractal_dimension3'] 
 
     j = 0
     X_test_rescaled = np.rint(X_test_rescaled).astype(int)
@@ -986,13 +995,13 @@ def check_and_delete_metrics_file(folder_path, question=False):
 
 # predictor 
 class Predictor(nn.Module):
-    def __init__(self, scaler=None, drop_prob=None, input_dim=21, output_dim=2):
+    def __init__(self, scaler=None, config=None):
         super(Predictor, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 512)
+        self.fc1 = nn.Linear(config["input_dim"], 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 64)
-        self.fc5 = nn.Linear(64, output_dim)
+        self.fc5 = nn.Linear(64, config["output_dim"])
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -1034,22 +1043,31 @@ evaluations = {
 
 # Dictionary of checkpoint folders
 checkpoints = {
-    "net": "checkpoints/net/",
-    "vcnet": "checkpoints/vcnet/",
-    "predictor": "checkpoints/predictor/"
+    "net_diabetes": "checkpoints/diabetes/net/",
+    "vcnet_diabetes": "checkpoints/diabetes/vcnet/",
+    "predictor_diabetes": "checkpoints/diabetes/predictor/",
+    "net_breast": "checkpoints/breast/net/",
+    "vcnet_breast": "checkpoints/breast/vcnet/",
+    "predictor_breast": "checkpoints/breast/predictor/"
 }
 
 # Dictionary of histories folders
 histories = {
-    "net": "histories/net/",
-    "vcnet": "histories/vcnet/",
-    "predictor": "histories/predictor/"
+    "net_diabetes": "histories/diabetes/net/",
+    "vcnet_diabetes": "histories/diabetes/vcnet/",
+    "predictor_diabetes": "histories/diabetes/predictor/",
+    "net_breast": "histories_breast/net/",
+    "vcnet_breast": "histories/breast/vcnet/",
+    "predictor_breast": "histories/breast/predictor/"
 }
 
 images = {
-    "net": "images/net/",
-    "vcnet": "images/vcnet/",
-    "predictor": "images/predictor/"
+    "net_diabetes": "images/diabetes/net/",
+    "vcnet_diabetes": "images/diabetes/vcnet/",
+    "predictor_diabetes": "images/diabetes/predictor/",
+    "net_breast": "images/breast/net/",
+    "vcnet_breast": "images/breast/vcnet/",
+    "predictor_breast": "images/breast/predictor/"
 }
 
 # Dictionary of plot functions
@@ -1059,3 +1077,68 @@ plot_functions = {
     "predictor": plot_loss_and_accuracy_client_predictor
 }
 
+# Dictionary of model parameters
+config_tests = {
+    "diabetes": {
+        "net": {
+            "input_dim": 21,
+            "output_dim": 2,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1]), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([1,1,1,0,1,1,1,1,1,1,1,1,1,0,0,0,1,1,0,0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
+            "lambda1": 3,
+            "lambda2": 12,
+            "lambda3": 1,
+            "lambda4": 1.5,
+            "learning_rate": 0.01,
+        },
+        "vcnet": {
+            "input_dim": 21,
+            "output_dim": 2,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1]), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([1,1,1,0,1,1,1,1,1,1,1,1,1,0,0,0,1,1,0,0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
+            "lambda1": 2,
+            "lambda2": 10,
+            "learning_rate": 0.01,
+        },
+        "predictor": {
+            "input_dim": 21,
+            "output_dim": 2,
+            "learning_rate": 0.01,
+        }
+    },
+    "breast": {
+        "net": {
+            "input_dim": 30,
+            "output_dim": 2,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1]), requires_grad=False),  # A CASOO
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,1,1]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
+            "lambda1": 3,
+            "lambda2": 12,
+            "lambda3": 1,
+            "lambda4": 1.5,
+            "learning_rate": 0.01,
+        },
+        "vcnet": {
+            "input_dim": 30,
+            "output_dim": 2,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1]), requires_grad=False),  # A CASOO
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,1,1]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
+            "lambda1": 2,
+            "lambda2": 10,
+            "learning_rate": 0.01,
+        },
+        "predictor": {
+            "input_dim": 30,
+            "output_dim": 2,
+            "learning_rate": 0.01,
+        }
+    }
+}

@@ -11,7 +11,8 @@ import json
 
 # Define Flower client
 class FlowerClient(fl.client.NumPyClient):
-    def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, client_id, data_type, train_fn, evaluate_fn, history_folder):
+    def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, 
+                 client_id, data_type, train_fn, evaluate_fn, history_folder, config):
         self.model = model
         self.X_train = X_train
         self.y_train = y_train
@@ -25,6 +26,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.train_fn = train_fn
         self.evaluate_fn = evaluate_fn
         self.history_folder = history_folder
+        self.config = config
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
@@ -38,7 +40,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.set_parameters(parameters)
         model_trained, train_loss, val_loss, acc, acc_prime, acc_val = self.train_fn(
             self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
-            self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False)
+            self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
         return self.get_parameters(config), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
@@ -78,6 +80,13 @@ def main()->None:
         help="Specifies the type of data partition",
     )
     parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=['diabetes','breast'],
+        default='diabetes',
+        help="Specifies the dataset to be used",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default='net',
@@ -90,9 +99,10 @@ def main()->None:
     model = utils.models[args.model]
     train_fn = utils.trainings[args.model]
     evaluate_fn = utils.evaluations[args.model]
-    history_folder = utils.histories[args.model]
-    images_folder = utils.images[args.model]
+    history_folder = utils.histories[f"{args.model}_{args.dataset}"]
+    images_folder = utils.images[f"{args.model}_{args.dataset}"]
     plot_fn = utils.plot_functions[args.model]
+    config = utils.config_tests[args.dataset][args.model]
 
     # check if metrics.csv exists otherwise delete it
     utils.check_and_delete_metrics_file(history_folder + f"client_{args.data_type}_{args.id}", question=False)
@@ -102,20 +112,17 @@ def main()->None:
 
     # load data
     X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler = utils.load_data(
-        client_id=str(args.id),device=device, type=args.data_type)
-
-    # Hyperparameter
-    learning_rate = 1e-1
-    drop_prob = 0.3
+        client_id=str(args.id), device=device, type=args.data_type, dataset=args.dataset)
 
     # Model
-    model = model(scaler=scaler, drop_prob=drop_prob).to(device)
+    model = model(scaler=scaler, config=config).to(device)
 
     # Optimizer and Loss function
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=config["learning_rate"], momentum=0.9)
 
     # Start Flower client
-    client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type, train_fn, evaluate_fn, history_folder).to_client()
+    client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type,
+                           train_fn, evaluate_fn, history_folder, config).to_client()
     fl.client.start_client(server_address="[::]:8080", client=client) # local host
     #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 

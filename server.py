@@ -90,6 +90,13 @@ def main() -> None:
         help="Specifies the type of data partition",
     )
     parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=['diabetes','breast'],
+        default='diabetes',
+        help="Specifies the dataset to be used",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default='net',
@@ -101,19 +108,17 @@ def main() -> None:
     # Start time
     start_time = time.time()
 
-    # Parameters
-    drop_prob = 0.3
-
     # model and history folder
     model = utils.models[args.model]
-    history_folder = utils.histories[args.model]
-    checkpoint_folder = utils.checkpoints[args.model]
-    images_folder = utils.images[args.model]
+    history_folder = utils.histories[f"{args.model}_{args.dataset}"]
+    checkpoint_folder = utils.checkpoints[f"{args.model}_{args.dataset}"]
+    images_folder = utils.images[f"{args.model}_{args.dataset}"]
+    config = utils.config_tests[args.dataset][args.model]
 
     # Define strategy
     #strategy = fl.server.strategy.FedAvg(  # traditional FedAvg, no saving
     strategy = SaveModelStrategy(
-        model=model(drop_prob=drop_prob),
+        model=model(scaler=None, config=config), # model to be trained
         min_fit_clients=3, # Never sample less than 10 clients for training
         min_evaluate_clients=3,  # Never sample less than 5 clients for evaluation
         min_available_clients=3, # Wait until all 10 clients are available
@@ -149,15 +154,15 @@ def main() -> None:
 
     # Evaluate the model on the test set
     if args.model == 'predictor':
-        y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, best_model_round=best_loss_round)
+        y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round)
         print(f"Accuracy on test set: {accuracy}")
     else:
-        H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, 
-                                                best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder)
+        H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
+                                                best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder, config=config)
         # visualize the results
-        utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type)
+        utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset)
         # Evaluate distance with all training sets
-        utils.evaluate_distance(data_type=args.data_type, best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder)
+        utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder, config=config)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
