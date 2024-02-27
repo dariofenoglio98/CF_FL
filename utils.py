@@ -593,20 +593,31 @@ def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: tor
     y_set = torch.nn.functional.one_hot(X_y[:, b.shape[1]:].to(torch.int64), 2).float().squeeze(1)
     a_ext = a.repeat(b.shape[0], 1, 1).transpose(1, 0)
     b_ext = b.repeat(a.shape[0], 1, 1)
-    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float) # !!!!! dist = (a_ext != b_ext).sum(dim=-1, dtype=torch.float)
     y_ext = y.repeat(y_set.shape[0], 1, 1).transpose(1, 0)
     y_set_ext = y_set.repeat(y.shape[0], 1, 1)
     filter = y_ext.argmax(dim=-1) != y_set_ext.argmax(dim=-1)
+
+    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float) # !!!!! dist = (a_ext != b_ext).sum(dim=-1, dtype=torch.float)
     dist[filter] = 210 # !!!!! dist[filter] = a.shape[-1]; min_distances = torch.min(dist, dim=-1)[0]
     min_distances, min_index = torch.min(dist, dim=-1)
-    return min_distances.mean()
+
+    ham_dist = ((a_ext != b_ext)).float().sum(dim=-1, dtype=torch.float)
+    ham_dist[filter] = 21
+    min_distances_ham, min_index_ham = torch.min(ham_dist, dim=-1)
+
+    rel_dist = ((torch.abs(a_ext - b_ext)) / b.max(dim=0)[0]).sum(dim=-1, dtype=torch.float)
+    rel_dist[filter] = 1
+    min_distances_rel, min_index_rel = torch.min(rel_dist, dim=-1)
+
+    return min_distances.mean(), min_distances_ham.mean(), min_distances_rel.mean()
 
 def variability(a: torch.Tensor, b: torch.Tensor):
     bool_a = a # > 0.5   !!!!!!
-    bool_b = b # > 0.5
+    # bool_b = b # > 0.5
     unique_a = set([tuple(i) for i in bool_a.cpu().detach().numpy()])
-    unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
-    return len(unique_a) / len(unique_b) if len(unique_b) else -1
+    # unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
+    # return len(unique_a) / len(unique_b) if len(unique_b) else -1
+    return len(unique_a) / a.shape[0]
 
 def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     bool_a = a # > 0.5   !!!!!!
@@ -614,8 +625,9 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     unique_a = set([tuple(i) for i in bool_a.cpu().detach().numpy()])
     unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
     intersection = unique_a.intersection(unique_b)
-    union = unique_a.union(unique_b)
-    return len(intersection) / len(union) if len(union) else -1
+    # union = unique_a.union(unique_b)
+    # return len(intersection) / len(union) if len(union) else -1
+    return len(intersection) / a.shape[0]
 
 # evaluate distance with all training sets
 def evaluate_distance(data_type="random", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None):
@@ -685,24 +697,26 @@ def evaluate_distance(data_type="random", best_model_round=1, model=None, checkp
     print(f"Counterfactual validity: {validity}")
 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
-    mean_distance = distance_train(x_prime_rescaled, X_train_rescaled.cpu(), H2_test, y_train.cpu()).numpy()
-    mean_distance_1 = distance_train(x_prime_rescaled, X_train_1_rescaled.cpu(), H2_test, y_train_1.cpu()).numpy()
-    mean_distance_2 = distance_train(x_prime_rescaled, X_train_2_rescaled.cpu(), H2_test, y_train_2.cpu()).numpy()
-    mean_distance_3 = distance_train(x_prime_rescaled, X_train_3_rescaled.cpu(), H2_test, y_train_3.cpu()).numpy()
+    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled.cpu(), H2_test, y_train.cpu())
+    mean_distance_1, hamming_prox1, relative_prox1 = distance_train(x_prime_rescaled, X_train_1_rescaled.cpu(), H2_test, y_train_1.cpu())
+    mean_distance_2, hamming_prox2, relative_prox2 = distance_train(x_prime_rescaled, X_train_2_rescaled.cpu(), H2_test, y_train_2.cpu())
+    mean_distance_3, hamming_prox3, relative_prox3 = distance_train(x_prime_rescaled, X_train_3_rescaled.cpu(), H2_test, y_train_3.cpu())
     print(f"\n\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
-    print(f"Mean distance with all training sets: {mean_distance}")
-    print(f"Mean distance with training set 1: {mean_distance_1}")
-    print(f"Mean distance with training set 2: {mean_distance_2}")
-    print(f"Mean distance with training set 3: {mean_distance_3}")
+    print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
+    print(f"Mean distance with training set 1 (proximity, hamming proximity, relative proximity): {mean_distance_1}, {hamming_prox1}, {relative_prox1}")
+    print(f"Mean distance with training set 2 (proximity, hamming proximity, relative proximity): {mean_distance_2}, {hamming_prox2}, {relative_prox2}")
+    print(f"Mean distance with training set 3 (proximity, hamming proximity, relative proximity): {mean_distance_3}, {hamming_prox3}, {relative_prox3}")
 
     hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
     euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
+    relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
     iou = intersection_over_union(x_prime_rescaled, X_train_rescaled)
     var = variability(x_prime_rescaled, X_train_rescaled)
 
     print(f"\n\033[1;32mExtra metrics Evaluation - Counterfactual:Training Set\033[0m")
     print('Hamming Distance: {:.2f}'.format(hamming_distance))
     print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
+    print('Relative Distance: {:.2f}'.format(relative_distance))
     print('Intersection over Union: {:.2f}'.format(iou))
     print('Variability: {:.2f}'.format(var))
 

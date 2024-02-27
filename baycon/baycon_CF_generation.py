@@ -143,13 +143,23 @@ def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: tor
     y_set = torch.nn.functional.one_hot(X_y[:, b.shape[1]:].to(torch.int64), 2).float().squeeze(1)
     a_ext = a.repeat(b.shape[0], 1, 1).transpose(1, 0)
     b_ext = b.repeat(a.shape[0], 1, 1)
-    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float)
     y_ext = y.repeat(y_set.shape[0], 1, 1).transpose(1, 0)
     y_set_ext = y_set.repeat(y.shape[0], 1, 1)
     filter = y_ext.argmax(dim=-1) != y_set_ext.argmax(dim=-1)
-    dist[filter] = 210
+
+    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float) # !!!!! dist = (a_ext != b_ext).sum(dim=-1, dtype=torch.float)
+    dist[filter] = 210 # !!!!! dist[filter] = a.shape[-1]; min_distances = torch.min(dist, dim=-1)[0]
     min_distances, min_index = torch.min(dist, dim=-1)
-    return min_distances.mean()
+
+    ham_dist = ((a_ext != b_ext)).float().sum(dim=-1, dtype=torch.float)
+    ham_dist[filter] = 21
+    min_distances_ham, min_index_ham = torch.min(ham_dist, dim=-1)
+
+    rel_dist = ((torch.abs(a_ext - b_ext)) / b.max(dim=0)[0]).sum(dim=-1, dtype=torch.float)
+    rel_dist[filter] = 1
+    min_distances_rel, min_index_rel = torch.min(rel_dist, dim=-1)
+
+    return min_distances.mean(), min_distances_ham.mean(), min_distances_rel.mean()
 
 # variability metric    
 def variability(a: torch.Tensor, b: torch.Tensor):
@@ -224,12 +234,14 @@ def evaluate_distance(X_test, y_test, y_pred_test, X_count, y_count, scaler, dat
 
     hamming_distance = (X_count_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
     euclidean_distance = (torch.abs(X_count_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
+    relative_distance = (torch.abs(X_count_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
     iou = intersection_over_union(X_count_rescaled, X_test_rescaled)
     var = variability(X_count_rescaled, X_test_rescaled)
 
     print(f"\n\033[1;32mExtra metrics Evaluation - Counterfactual:Training Set\033[0m")
     print('Hamming Distance: {:.2f}'.format(hamming_distance))
     print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
+    print('Relative Distance: {:.2f}'.format(relative_distance))
     print('Intersection over Union: {:.2f}'.format(iou))
     print('Variability: {:.2f}'.format(var))
 
