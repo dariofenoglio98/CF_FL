@@ -379,7 +379,7 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
     return loss_test.item(), acc_test, validity, proximity, hamming_distance, euclidean_distance, iou, var
 
 # train predictor
-def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, confit=None):
+def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
     acc_train,loss_train, acc_val, loss_val = [], [], [], []
     best_loss = 1000
     for epoch in range(n_epochs):
@@ -574,7 +574,7 @@ def evaluation_central_test_predictor(data_type="random", dataset="diabetes", be
     if best_model_round == None:
         model.load_state_dict(torch.load(model_path))
     else:
-        model.load_state_dict(torch.load(f"checkpoints/predictor/{data_type}/model_round_{best_model_round}.pth"))
+        model.load_state_dict(torch.load(f"checkpoints/{dataset}/predictor/{data_type}/model_round_{best_model_round}.pth"))
     # evaluate
     model.eval()
     with torch.no_grad():
@@ -1070,7 +1070,7 @@ histories = {
     "net_diabetes": "histories/diabetes/net/",
     "vcnet_diabetes": "histories/diabetes/vcnet/",
     "predictor_diabetes": "histories/diabetes/predictor/",
-    "net_breast": "histories_breast/net/",
+    "net_breast": "histories/breast/net/",
     "vcnet_breast": "histories/breast/vcnet/",
     "predictor_breast": "histories/breast/predictor/"
 }
