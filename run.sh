@@ -2,8 +2,8 @@
 
 # SET VARIABLES
 n_rounds=500
-data_type="random"  # Options: "random", "cluster", "2cluster" 
-model="predictor"  # Options: "vcnet", "net", "predictor"
+data_type="2cluster"  # Options: "random", "cluster", "2cluster" 
+model="vcnet"  # Options: "vcnet", "net", "predictor"
 n_clients=3
 
 echo "Starting server"

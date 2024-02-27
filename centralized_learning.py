@@ -2,6 +2,7 @@
 import torch
 import utils
 import argparse
+import os
 
 
 # main
@@ -44,7 +45,7 @@ def main()->None:
     # load data
     for client_id in range(1, 4):
         # print client id in blue
-        print(f"\n\n\033[34mClient {client_id}\033[0m")
+        print(f"\n\n\033[34mClient {client_id} -- {args.model}\033[0m")
         X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler = utils.load_data(
             client_id=str(client_id),device=device, type=args.data_type)
 
@@ -67,14 +68,16 @@ def main()->None:
         # Training
         model, loss_train, loss_val, acc, acc_prime, acc_val = train_fn(
             model, loss_fn, optimizer, X_train, y_train, 
-            X_val, y_val, n_epochs=args.n_epochs, save_best=True,)
+            X_val, y_val, n_epochs=args.n_epochs, save_best=True, print_info=False,)
         
         # Save model
+        if not os.path.exists(checkpoint_folder + f"{args.data_type}"):
+            os.makedirs(checkpoint_folder + f"{args.data_type}")
         model_path = checkpoint_folder + f"{args.data_type}/centralized_client_{client_id}.pth"
         torch.save(model.state_dict(), model_path)
 
         # Plot loss and accuracy using the previous lists
-        utils.plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type=args.data_type, client_id=client_id, image_folder=images_folder)
+        utils.plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type=args.data_type, client_id=client_id, image_folder=images_folder, show=False)
 
         # Evaluate the model on the test set
         if args.model == 'predictor':
@@ -84,7 +87,7 @@ def main()->None:
             H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, 
                                                     best_model_round=None, model=model_network, checkpoint_folder=checkpoint_folder, model_path=model_path)
             # visualize the results
-            # utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type)
+            utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type)
             # Evaluate distance with all training sets
             utils.evaluate_distance(data_type=args.data_type, best_model_round=None, model=model_network, checkpoint_folder=checkpoint_folder, model_path=model_path)
 

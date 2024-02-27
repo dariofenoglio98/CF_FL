@@ -238,7 +238,7 @@ class ConceptVCNet(nn.Module,):
         return out, x_reconstructed, q_cf, cond, out2
 
 # train vcnet
-def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False):
+def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True):
     train_loss = list()
     val_loss = list()
     train_acc = list()
@@ -258,7 +258,8 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
 
         loss = loss_task + lambda1*loss_kl + lambda2*loss_rec 
 
-        print(loss_task, loss_kl, loss_rec)
+        if print_info:
+            print(loss_task, loss_kl, loss_rec)
         train_loss.append(loss.item())
         
         optimizer.zero_grad()
@@ -284,7 +285,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
             best_loss = val_loss[-1]
             model_best = model
             
-        if epoch % 50 == 0:
+        if epoch % 50 == 0: # and print_info:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
                 epoch, n_epochs, loss.item(), acc*100, acc_prime*100, loss_val.item(), acc_val*100, acc_prime_val*100))
 
@@ -295,7 +296,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
 
 
 # train our model
-def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False):
+def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True):
     train_loss = list()
     train_acc = list()
     val_loss = list()
@@ -321,7 +322,8 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         #             It is a design choice to have better counterfactuals or closer counterfactuals.
         loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_q_d
         # loss = loss_task + 0.1*loss_kl + 10*loss_rec + 0.5*loss_validity + 0.1*loss_kl2 + loss_p_d + loss_q_d
-        print(loss_task, loss_kl, loss_kl2, loss_rec, loss_validity)
+        if print_info:
+            print(loss_task, loss_kl, loss_kl2, loss_rec, loss_validity)
         train_loss.append(loss.item())
         
         optimizer.zero_grad()
@@ -346,7 +348,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
             best_loss = val_loss[-1]
             model_best = model
             
-        if epoch % 50 == 0:
+        if epoch % 50 == 0: # and print_info:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
                 epoch, n_epochs, loss.item(), acc*100, acc_prime*100, loss_val.item(), acc_val*100, acc_prime_val*100))
     
@@ -384,7 +386,7 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
     return loss_test.item(), acc_test, validity, proximity, hamming_distance, euclidean_distance, iou, var
 
 # train predictor
-def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False):
+def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True):
     acc_train,loss_train, acc_val, loss_val = [], [], [], []
     best_loss = 1000
     for epoch in range(n_epochs):
@@ -403,8 +405,8 @@ def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n
             loss_val.append(loss.item())
             acc_val.append((torch.argmax(y_pred, dim=1) == y_val).float().mean().item())
         
-        #if epoch % 50 == 0 or epoch==0:
-            #print(f'Epoch: {epoch}, Train Loss: {loss_train[-1]}, Train Accuracy: {acc_train[-1]}, Val Loss: {loss_val[-1]}, Val Accuracy: {acc_val[-1]}')
+        if epoch % 50 == 0 or epoch==0:
+            print(f'Epoch: {epoch}, Train Loss: {loss_train[-1]}, Train Accuracy: {acc_train[-1]}, Val Loss: {loss_val[-1]}, Val Accuracy: {acc_val[-1]}')
     
         if save_best and loss_val[-1] < best_loss:
             best_loss = loss_val[-1]
@@ -462,7 +464,7 @@ def load_data(client_id="1",device="cpu", type='random'):
     X = df_train.drop('Diabetes_binary', axis=1)
     y = df_train['Diabetes_binary']
     # Use 10 % of total data as Test set and the rest as (Train + Validation) set 
-    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.1) # use only 0.1% of the data as test set - i dont perform validation on client test set
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.01) # use only 0.1% of the data as test set - i dont perform validation on client test set
     # Use 20 % of (Train + Validation) set as Validation set
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2)
     num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
@@ -717,7 +719,7 @@ def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescal
     X_test_rescaled = np.rint(X_test_rescaled).astype(int)
     x_prime_rescaled = np.rint(x_prime_rescaled).astype(int)
     for i, s in enumerate(X_test_rescaled):
-        if j > 10:
+        if j > 5:
             break
         if H2_test[i].argmax() == y_prime[i].argmax():
             j += 1
@@ -751,7 +753,7 @@ def check_gpu(manual_seed=True, print_info=True):
     return device
 
 # plot and save plot on server side
-def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", image_folder="images/"):
+def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", image_folder="images/", show=True):
     folder = image_folder + f"/server_side_{data_type}/"
     # check if folder exists
     if not os.path.exists(folder):
@@ -782,7 +784,8 @@ def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", image_fol
     plt.title('Distributed Metrics (Weighted Average on Validation Set)')
     plt.legend()
     plt.savefig(folder + f"training_{rounds}_rounds.png")
-    plt.show()
+    if show:
+        plt.show()
     return min_loss_index+1, max_accuracy_index+1
 
 # plot and save plot on client side    # to be removed
@@ -828,7 +831,7 @@ def plot_loss_and_accuracy_client_net(client_id, data_type="random"):
     plt.show()
 
 # plot and save plot on client side
-def plot_loss_and_accuracy_client(client_id, data_type="random", history_folder="histories/", image_folder="images/"):
+def plot_loss_and_accuracy_client(client_id, data_type="random", history_folder="histories/", image_folder="images/", show=True):
     # read data
     df = pd.read_csv(history_folder + f'client_{data_type}_{client_id}/metrics.csv')
     # Create a folder for the client
@@ -867,7 +870,8 @@ def plot_loss_and_accuracy_client(client_id, data_type="random", history_folder=
     plt.title(f'Client {client_id} Metrics (Validation Set)')
     plt.legend()
     plt.savefig(folder + f"/training_{rounds.iloc[-1]}_rounds.png")
-    plt.show()
+    if show:
+        plt.show()
 
 # save client metrics
 def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None, hamming_distance=None, euclidean_distance=None, iou=None, var=None, client_id=1, data_type="random", tot_rounds=20, history_folder="histories/"):
@@ -889,7 +893,7 @@ def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None
         writer.writerow([round_num, loss, accuracy, validity, proximity, hamming_distance, euclidean_distance, iou, var])
 
 # plot and save plot on client side
-def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", client_id=1, image_folder="images/"):
+def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", client_id=1, image_folder="images/", show=True):
     # Create a folder for the client
     folder = image_folder + f"client_centralized_{data_type}_{client_id}"
     if not os.path.exists(folder):
@@ -917,9 +921,10 @@ def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", cl
     plt.title(f'Client {client_id} Metrics (Validation Set)')
     plt.legend()
     plt.savefig(folder + f"/validation_metrics.png")
-    plt.show()
+    if show:
+        plt.show()
 
-def plot_loss_and_accuracy_client_predictor(client_id, data_type="random", history_folder="histories/", image_folder="images/"):
+def plot_loss_and_accuracy_client_predictor(client_id, data_type="random", history_folder="histories/", image_folder="images/", show=True):
     # read data
     df = pd.read_csv(history_folder + f'client_{data_type}_{client_id}/metrics.csv')
     # Create a folder for the client
@@ -954,7 +959,8 @@ def plot_loss_and_accuracy_client_predictor(client_id, data_type="random", histo
     plt.title(f'Client {client_id} Metrics (Validation Set)')
     plt.legend()
     plt.savefig(folder + f"/training_{rounds.iloc[-1]}_rounds.png")
-    plt.show()
+    if show:
+        plt.show()
 
 # function to check if metrics.csv exists otherwise delete it
 def check_and_delete_metrics_file(folder_path, question=False):
