@@ -25,13 +25,14 @@
 # fi
 
 model="net"
-data_type="2cluster"
-n_rounds=100
-dataset="breast"
+data_type="random"
+n_rounds=50
+dataset="diabetes"
 n_clients=3
+pers=1
 
 echo "Starting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset"
-python server.py --rounds $n_rounds --data_type $data_type --model $model --dataset $dataset  &
+python server.py --rounds $n_rounds --data_type $data_type --model $model --dataset $dataset --pers $pers  &
 sleep 3  # Sleep for 3s to give the server enough time to start
  
 for i in $(seq 1 $n_clients); do

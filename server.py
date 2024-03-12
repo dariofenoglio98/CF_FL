@@ -122,6 +122,19 @@ def main() -> None:
         choices=['net','vcnet', 'predictor'],
         help="Specifies the model to be trained",
     )
+    parser.add_argument(
+        "--pers",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="Specifies if personalization is used (1) or not (0)",
+    )
+    parser.add_argument(
+        "--n_clients",
+        type=int,
+        default=3,
+        help="Specifies the number of clients to be used for training and evaluation",
+    )
     args = parser.parse_args()
 
     # Start time
@@ -187,6 +200,18 @@ def main() -> None:
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
+    time.sleep(2)
+    
+    # personalization (now done on the server but can be uqually done on the client side) 
+    if args.pers == 1:
+        start_time = time.time()
+        # Personalization
+        print("\n\n\033[33mPersonalization\033[0m")
+        # Personalization
+        utils.personalization(model, model_name=args.model, data_type=args.data_type, dataset=args.dataset, config=config, images_folder=images_folder, checkpoint_folder=checkpoint_folder, best_model_round=best_loss_round)
+
+        # Print training time in minutes (grey color)
+        print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
 
 
 if __name__ == "__main__":
