@@ -1,0 +1,6 @@
+baycon/
+checkpoints/
+data/
+histories/
+images/
+__pycache__/

@@ -14,6 +14,7 @@ import json
 import time
 
 
+
 # Config_client
 def fit_config(server_round: int):
     """Return training configuration dict for each round."""
@@ -34,11 +35,13 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 # Custom strategy to save model after each round
 class SaveModelStrategy(fl.server.strategy.FedAvg):
-    def __init__(self, model, data_type, checkpoint_folder, *args, **kwargs):
+    def __init__(self, model, data_type, checkpoint_folder, dataset, model_config, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
         self.data_type = data_type
         self.checkpoint_folder = checkpoint_folder
+        self.dataset = dataset
+        self.model_config = model_config
 
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
@@ -53,6 +56,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Aggregate model weights using weighted average and store checkpoint"""
 
+        # Save model
         # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
         aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
 
@@ -67,8 +71,23 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             self.model.load_state_dict(state_dict, strict=True)
             # Save the model
             torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
+        
+        # Perform evaluation on the server side on each single client after local training       
+        # for each clients evaluate the model
+        for client, fit_res in results:
+            print(f"Server-side evaluation of client {client.cid}")
+            # Load model
+            params = fl.common.parameters_to_ndarrays(fit_res.parameters)
+            params_dict = zip(self.model.state_dict().keys(), params)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.model.load_state_dict(state_dict, strict=True)
+            # Evaluate the model
+            client_metrics = utils.server_side_evaluation(data_type=self.data_type, dataset=self.dataset, model=self.model, config=self.model_config)
 
         return aggregated_parameters, aggregated_metrics
+
+
+
 
 
 
@@ -129,6 +148,8 @@ def main() -> None:
         on_fit_config_fn=fit_config,
         data_type=args.data_type,
         checkpoint_folder=checkpoint_folder,
+        dataset=args.dataset,
+        model_config=config,
     )
 
     # Start Flower server for three rounds of federated learning

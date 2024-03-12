@@ -582,6 +582,78 @@ def evaluation_central_test_predictor(data_type="random", dataset="diabetes", be
         acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
     return y, acc
 
+def server_side_evaluation(data_type="random", dataset="diabetes", model=None, config=None): # not efficient to load every time the dataset
+    # check device
+    device = check_gpu(manual_seed=True, print_info=False)
+
+    # X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
+    # X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
+    # X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
+
+    # X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
+    # X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
+
+    # X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
+    # X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
+
+    # X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
+    # X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
+
+    # X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
+    #                             torch.cat((y_train_1, y_train_2, y_train_3)))
+    
+    # load data
+    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
+    if dataset == "breast":
+        df_test = df_test.drop(columns=["Unnamed: 0"])
+    df_test = df_test.astype(int)
+    # Dataset split
+    X = df_test.drop('Labels', axis=1)
+    y = df_test['Labels']
+
+    # scale data
+    scaler = MinMaxScaler()
+    # X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
+    # X_test = scaler.transform(X.values)
+    X_test = scaler.fit_transform(X.values)
+    X_test = torch.Tensor(X_test).float().to(device)
+    y_test = torch.LongTensor(y.values).to(device)
+
+    # model = model(scaler, config).to(device)
+    # if best_model_round == None:
+    #     model.load_state_dict(torch.load(model_path))
+    # else:
+    #     model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
+    # evaluate
+    model.scaler = scaler
+    model.to(device)
+    model.eval()
+    with torch.no_grad():
+        if model.__class__.__name__ == "Predictor":
+            y = model(X_test)
+            client_acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
+            print(f"Accuracy: {client_acc}")
+            return client_acc
+        else:
+            mask = config['mask_evaluation']
+            if model.__class__.__name__ == "Net":
+                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+            elif model.__class__.__name__ == "ConceptVCNet":
+                H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
+                x_prime = x_reconstructed
+
+            # X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
+            # X_test_rescaled = np.round(X_test_rescaled)
+            # x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
+            # x_prime_rescaled = np.round(x_prime_rescaled)
+            
+            validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+            print(f"Validity: {validity}")
+
+            client_metrics = validity 
+
+            return client_metrics
+
 # distance metrics with training set
 def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: torch.Tensor):
     """
@@ -693,7 +765,7 @@ def evaluate_distance(data_type="random", dataset="diabetes", best_model_round=1
 
     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
 
-    print(f"\n\033[1;32mValidity Evaluation - Counterfactual:Training Set\033[0m")
+    print(f"\n\033[1;32mValidity Evaluation - Counterfactual: Testing Set\033[0m")
     print(f"Counterfactual validity: {validity}")
 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
