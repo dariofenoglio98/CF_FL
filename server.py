@@ -87,7 +87,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             client_data[client.cid] = client_metrics
         
         # Aggregate metrics
-        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset)
+        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config)
 
         return aggregated_parameters, aggregated_metrics
 
@@ -147,13 +147,9 @@ def main() -> None:
 
     # model and history folder
     model = utils.models[args.model]
-    history_folder = utils.histories[f"{args.model}_{args.dataset}"]
-    checkpoint_folder = utils.checkpoints[f"{args.model}_{args.dataset}"]
-    images_folder = utils.images[f"{args.model}_{args.dataset}"]
     config = utils.config_tests[args.dataset][args.model]
 
     # Define strategy
-    #strategy = fl.server.strategy.FedAvg(  # traditional FedAvg, no saving
     strategy = SaveModelStrategy(
         model=model(scaler=None, config=config), # model to be trained
         min_fit_clients=3, # Never sample less than 10 clients for training
@@ -165,7 +161,7 @@ def main() -> None:
         on_evaluate_config_fn=fit_config,
         on_fit_config_fn=fit_config,
         data_type=args.data_type,
-        checkpoint_folder=checkpoint_folder,
+        checkpoint_folder=config['checkpoint_folder'],
         dataset=args.dataset,
         model_config=config,
     )
@@ -183,25 +179,25 @@ def main() -> None:
     # Save loss and accuracy to a file
     print(f"Saving metrics to as .json in histories folder...")
     # # check if folder exists and save metrics
-    if not os.path.exists(history_folder + f"server_{args.data_type}"):
-        os.makedirs(history_folder + f"server_{args.data_type}")
-    with open(history_folder + f'server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
+    if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
+        os.makedirs(config['history_folder'] + f"server_{args.data_type}")
+    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
         json.dump({'loss': loss, 'accuracy': accuracy}, f)
  
     # Plot
-    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, images_folder, show=False)
+    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False)
 
     # Evaluate the model on the test set
     if args.model == 'predictor':
-        y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round)
+        y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, config=config)
         print(f"Accuracy on test set: {accuracy}")
     else:
         H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
-                                                best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder, config=config)
+                                                best_model_round=best_loss_round, model=model, config=config)
         # visualize the results
         utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset)
         # Evaluate distance with all training sets
-        utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model=model, checkpoint_folder=checkpoint_folder, config=config)
+        utils.evaluate_distance(n_clients=args.n_clients, data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model=model, config=config)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
@@ -213,7 +209,7 @@ def main() -> None:
         # Personalization
         print("\n\n\033[94mPersonalization\033[0m")
         # Personalization
-        utils.personalization(model, model_name=args.model, data_type=args.data_type, dataset=args.dataset, config=config, images_folder=images_folder, checkpoint_folder=checkpoint_folder, best_model_round=best_loss_round)
+        utils.personalization(n_clients=args.n_clients, model=model, data_type=args.data_type, dataset=args.dataset, config=config, best_model_round=best_loss_round)
 
         # Print training time in minutes (grey color)
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")

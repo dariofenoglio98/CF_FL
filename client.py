@@ -12,7 +12,7 @@ import json
 # Define Flower client
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, 
-                 client_id, data_type, train_fn, evaluate_fn, history_folder, config):
+                 client_id, data_type, train_fn, evaluate_fn, config):
         self.model = model
         self.X_train = X_train
         self.y_train = y_train
@@ -25,7 +25,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.data_type = data_type
         self.train_fn = train_fn
         self.evaluate_fn = evaluate_fn
-        self.history_folder = history_folder
+        self.history_folder = config['history_folder']
         self.config = config
 
     def get_parameters(self, config):
@@ -99,13 +99,11 @@ def main()->None:
     model = utils.models[args.model]
     train_fn = utils.trainings[args.model]
     evaluate_fn = utils.evaluations[args.model]
-    history_folder = utils.histories[f"{args.model}_{args.dataset}"]
-    images_folder = utils.images[f"{args.model}_{args.dataset}"]
     plot_fn = utils.plot_functions[args.model]
     config = utils.config_tests[args.dataset][args.model]
 
     # check if metrics.csv exists otherwise delete it
-    utils.check_and_delete_metrics_file(history_folder + f"client_{args.data_type}_{args.id}", question=False)
+    utils.check_and_delete_metrics_file(config['history_folder'] + f"client_{args.data_type}_{args.id}", question=False)
 
     # check gpu and set manual seed
     device = utils.check_gpu(manual_seed=True)
@@ -122,12 +120,12 @@ def main()->None:
 
     # Start Flower client
     client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type,
-                           train_fn, evaluate_fn, history_folder, config).to_client()
+                           train_fn, evaluate_fn, config).to_client()
     fl.client.start_client(server_address="[::]:8080", client=client) # local host
     #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 
     # read saved data and plot
-    plot_fn(args.id, args.data_type, history_folder, images_folder, show=False)
+    plot_fn(args.id, args.data_type, config, show=False)
 
 
 

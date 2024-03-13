@@ -24,15 +24,15 @@
 #     exit 1
 # fi
 
-model="net"
+model="predictor"
 data_type="random"
-n_rounds=50
+n_rounds=20
 dataset="breast"
 n_clients=3
 pers=1
 
 echo "Starting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset"
-python server.py --rounds $n_rounds --data_type $data_type --model $model --dataset $dataset --pers $pers  &
+python server.py --rounds $n_rounds --data_type $data_type --model $model --dataset $dataset --pers $pers --n_clients $n_clients  &
 sleep 3  # Sleep for 3s to give the server enough time to start
  
 for i in $(seq 1 $n_clients); do
