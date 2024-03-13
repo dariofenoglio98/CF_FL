@@ -1175,7 +1175,7 @@ class Predictor(nn.Module):
 
 # freeze classifier
 def freeze_params(model, model_section):
-    print(f"Freezing: {model_section}\n")
+    print(f"Freezing: {model_section}")
     for name, param in model.named_parameters():
         if any([c in name for c in model_section]):
             param.requires_grad = False
@@ -1233,6 +1233,7 @@ def personalization(model, model_name="net", data_type="random", dataset="diabet
 
     # local training and evaluation
     for c in range(3):
+        print(f"\n\033[1;33mClient {c+1}\033[0m")
         model_trained = copy.deepcopy(model_freezed)
         loss_fn = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(model_trained.parameters(), lr=config["learning_rate_personalization"], momentum=0.9)
@@ -1271,29 +1272,29 @@ def personalization(model, model_name="net", data_type="random", dataset="diabet
 
             print(f"Counterfactual validity client {c+1}: {validity}")
 
-            # # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
-            # mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled.cpu(), H2_test, y_train.cpu())
-            # mean_distance_1, hamming_prox1, relative_prox1 = distance_train(x_prime_rescaled, X_train_1_rescaled.cpu(), H2_test, y_train_1.cpu())
-            # mean_distance_2, hamming_prox2, relative_prox2 = distance_train(x_prime_rescaled, X_train_2_rescaled.cpu(), H2_test, y_train_2.cpu())
-            # mean_distance_3, hamming_prox3, relative_prox3 = distance_train(x_prime_rescaled, X_train_3_rescaled.cpu(), H2_test, y_train_3.cpu())
-            # print(f"\n\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
-            # print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
-            # print(f"Mean distance with training set 1 (proximity, hamming proximity, relative proximity): {mean_distance_1}, {hamming_prox1}, {relative_prox1}")
-            # print(f"Mean distance with training set 2 (proximity, hamming proximity, relative proximity): {mean_distance_2}, {hamming_prox2}, {relative_prox2}")
-            # print(f"Mean distance with training set 3 (proximity, hamming proximity, relative proximity): {mean_distance_3}, {hamming_prox3}, {relative_prox3}")
+            # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
+            mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled.cpu(), H2_test, y_train.cpu())
+            mean_distance_1, hamming_prox1, relative_prox1 = distance_train(x_prime_rescaled, X_train_1_rescaled.cpu(), H2_test, y_train_1.cpu())
+            mean_distance_2, hamming_prox2, relative_prox2 = distance_train(x_prime_rescaled, X_train_2_rescaled.cpu(), H2_test, y_train_2.cpu())
+            mean_distance_3, hamming_prox3, relative_prox3 = distance_train(x_prime_rescaled, X_train_3_rescaled.cpu(), H2_test, y_train_3.cpu())
+            print(f"\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
+            print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
+            print(f"Mean distance with training set 1 (proximity, hamming proximity, relative proximity): {mean_distance_1}, {hamming_prox1}, {relative_prox1}")
+            print(f"Mean distance with training set 2 (proximity, hamming proximity, relative proximity): {mean_distance_2}, {hamming_prox2}, {relative_prox2}")
+            print(f"Mean distance with training set 3 (proximity, hamming proximity, relative proximity): {mean_distance_3}, {hamming_prox3}, {relative_prox3}")
 
-            # hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
-            # euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
-            # relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
-            # iou = intersection_over_union(x_prime_rescaled, X_train_rescaled)
-            # var = variability(x_prime_rescaled, X_train_rescaled)
+            hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
+            euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
+            relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
+            iou = intersection_over_union(x_prime_rescaled, X_train_rescaled)
+            var = variability(x_prime_rescaled, X_train_rescaled)
 
-            # print(f"\n\033[1;32mExtra metrics Evaluation - Counterfactual:Training Set\033[0m")
-            # print('Hamming Distance: {:.2f}'.format(hamming_distance))
-            # print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
-            # print('Relative Distance: {:.2f}'.format(relative_distance))
-            # print('Intersection over Union: {:.2f}'.format(iou))
-            # print('Variability: {:.2f}'.format(var))
+            print(f"\033[1;32mExtra metrics Evaluation - Counterfactual:Training Set\033[0m")
+            print('Hamming Distance: {:.2f}'.format(hamming_distance))
+            print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
+            print('Relative Distance: {:.2f}'.format(relative_distance))
+            print('Intersection over Union: {:.2f}'.format(iou))
+            print('Variability: {:.2f}'.format(var))
 
         # save metrics
 
