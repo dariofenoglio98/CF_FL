@@ -206,7 +206,7 @@ def main() -> None:
     if args.pers == 1:
         start_time = time.time()
         # Personalization
-        print("\n\n\033[33mPersonalization\033[0m")
+        print("\n\n\033[94mPersonalization\033[0m")
         # Personalization
         utils.personalization(model, model_name=args.model, data_type=args.data_type, dataset=args.dataset, config=config, images_folder=images_folder, checkpoint_folder=checkpoint_folder, best_model_round=best_loss_round)
 
