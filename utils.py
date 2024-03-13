@@ -10,12 +10,8 @@ import os
 import csv
 from sklearn.metrics import accuracy_score
 import numpy as np
-<<<<<<< HEAD
 from sklearn.decomposition import PCA
-=======
 import copy
->>>>>>> 31e6628ba7bca3a9c138e33128cd2ec482f67f11
-
 
 
 
