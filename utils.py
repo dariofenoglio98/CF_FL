@@ -10,7 +10,11 @@ import os
 import csv
 from sklearn.metrics import accuracy_score
 import numpy as np
+<<<<<<< HEAD
 from sklearn.decomposition import PCA
+=======
+import copy
+>>>>>>> 31e6628ba7bca3a9c138e33128cd2ec482f67f11
 
 
 
@@ -68,6 +72,7 @@ class Net(nn.Module,):
         return mask
                 
     def forward(self, x, include=True, mask_init=None):
+        # standard forward pass (predictor)
         out = self.fc1(x)
         out = self.relu(out)
         
@@ -82,13 +87,17 @@ class Net(nn.Module,):
         
         out = self.fc5(out)
         
+        # concept mean and variance (encoder)
         z2_mu = self.concept_mean_predictor(x)
         z2_log_var = self.concept_var_predictor(x)
+
+        # sample z from q
         z2_sigma = torch.exp(z2_log_var / 2) + EPS
         qz2_x = torch.distributions.Normal(z2_mu, z2_sigma)
         z2 = qz2_x.rsample()
         p_z2 = torch.distributions.Normal(torch.zeros_like(qz2_x.mean), torch.ones_like(qz2_x.mean))
 
+        # decoder
         x_reconstructed = self.decoder(z2)
         x_reconstructed = F.hardtanh(x_reconstructed, -0.1, 1.1)
         # x_reconstructed = torch.clamp(x_reconstructed, min=0, max=1) 
@@ -97,19 +106,24 @@ class Net(nn.Module,):
 
         y_prime = randomize_class((out).float(), include=include)
         
+        # concept mean and variance (encoder2)
         z2_c_y_y_prime = torch.cat((z2, x, out, y_prime), dim=1)
         z3_mu = self.concept_mean_qz3_predictor(z2_c_y_y_prime)
         z3_log_var = self.concept_var_qz3_predictor(z2_c_y_y_prime)
+
+        # sample z from q
         z3_sigma = torch.exp(z3_log_var / 2) + EPS
         qz3_z2_c_y_y_prime = torch.distributions.Normal(z3_mu, z3_sigma)
         z3 = qz3_z2_c_y_y_prime.rsample(sample_shape=torch.Size())
         
+        # concept mean and variance (encoder3)
         z2_c_y = torch.cat((z2, x, out), dim=1)
         z3_mu = self.concept_mean_z3_predictor(z2_c_y)
         z3_log_var = self.concept_var_z3_predictor(z2_c_y)
         z3_sigma = torch.exp(z3_log_var / 2) + EPS
         pz3_z2_c_y = torch.distributions.Normal(z3_mu, z3_sigma)
         
+        # decoder
         x_prime_reconstructed = self.decoder(z3)
         x_prime_reconstructed = F.hardtanh(x_prime_reconstructed, -0.1, 1.1)
         # x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1) 
@@ -136,6 +150,7 @@ class Net(nn.Module,):
             x_prime_reconstructed = self.scaler.transform(x_prime_reconstructed)
             x_prime_reconstructed = torch.Tensor(x_prime_reconstructed).to(x.device)
         
+        # predictor on counterfactuals
         out2 = self.fc1(x_prime_reconstructed)
         out2 = self.relu(out2)
         
@@ -176,7 +191,7 @@ class ConceptVCNet(nn.Module,):
         self.scaler = scaler
 
     def forward(self, x, mask_init=None, include=True):
-        # standard forward pass
+        # standard forward pass (predictor)
         out = self.fc1(x)
         out = self.relu(out)
         
@@ -191,6 +206,7 @@ class ConceptVCNet(nn.Module,):
         
         out = self.fc5(out_rec)
         
+        # concept mean and variance (encoder)
         mu_cf = self.concept_mean_predictor(torch.cat([out_rec, out], dim=-1))
         log_var_cf = self.concept_var_predictor(torch.cat([out_rec, out], dim=-1))
 
@@ -205,6 +221,7 @@ class ConceptVCNet(nn.Module,):
             y_prime = randomize_class((out).float(), include=include)
             cond = y_prime
 
+        # decoder
         zy_cf = torch.cat([z_cf, cond], dim=1)
         x_reconstructed = self.decoder(zy_cf)
 
@@ -215,6 +232,7 @@ class ConceptVCNet(nn.Module,):
             x_reconstructed = self.scaler.transform(x_reconstructed)
             x_reconstructed = torch.Tensor(x_reconstructed).to(x.device)
 
+        # predictor on counterfactuals
         out2 = self.fc1(x_reconstructed)
         out2 = self.relu(out2)
 
@@ -1155,6 +1173,14 @@ class Predictor(nn.Module):
         return torch.argmax(self.forward(torch.tensor(x, dtype=torch.float32)), dim=1)
         self.forward(torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x.float())
 
+# freeze classifier
+def freeze_params(model, model_section):
+    print(f"Freezing: {model_section}\n")
+    for name, param in model.named_parameters():
+        if any([c in name for c in model_section]):
+            param.requires_grad = False
+    return model
+
 def personalization(model, model_name="net", data_type="random", dataset="diabetes", config=None, images_folder="images/", checkpoint_folder="checkpoints/", best_model_round=None):
     # function
     train_fn = trainings[model_name]
@@ -1203,15 +1229,16 @@ def personalization(model, model_name="net", data_type="random", dataset="diabet
     model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
 
     # freeze model - encoder
-    import copy
-    model_freezed = copy.deepcopy(model)
+    model_freezed = freeze_params(model, config["to_freeze"])
 
     # local training and evaluation
     for c in range(3):
+        model_trained = copy.deepcopy(model_freezed)
         loss_fn = torch.nn.CrossEntropyLoss()
-        optimizer = torch.optim.SGD(model_freezed.parameters(), lr=config["learning_rate_personalization"], momentum=0.9)
+        optimizer = torch.optim.SGD(model_trained.parameters(), lr=config["learning_rate_personalization"], momentum=0.9)
+        # train
         model_trained, train_loss, val_loss, acc, acc_prime, acc_val = train_fn(
-                model_freezed, loss_fn, optimizer, X_train_list[c], y_train_list[c], X_val_list[c],
+                model_trained, loss_fn, optimizer, X_train_list[c], y_train_list[c], X_val_list[c],
                 y_val_list[c], n_epochs=config["n_epochs_personalization"], print_info=False, config=config, save_best=True)
 
         # evaluate
@@ -1232,7 +1259,6 @@ def personalization(model, model_name="net", data_type="random", dataset="diabet
 
             x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
             x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-
             X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
             X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
             
@@ -1346,7 +1372,13 @@ config_tests = {
             "lambda4": 1.5,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5
+            "n_epochs_personalization": 5,
+            "decoder_w": ["decoder"],
+            "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
+            "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"], 
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"]
         },
         "vcnet": {
             "input_dim": 21,
@@ -1359,14 +1391,20 @@ config_tests = {
             "lambda2": 10,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5
+            "n_epochs_personalization": 5, 
+            "decoder_w": ["decoder"],
+            "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"]
         },
         "predictor": {
             "input_dim": 21,
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5
+            "n_epochs_personalization": 5,
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["fc1", "fc2", "fc3"]
         }
     },
     "breast": {
@@ -1383,7 +1421,14 @@ config_tests = {
             "lambda4": 1.5,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5
+            "n_epochs_personalization": 5,
+            "decoder_w": ["decoder"],
+            "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
+            "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"], 
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"]
+        
         },
         "vcnet": {
             "input_dim": 30,
@@ -1396,14 +1441,20 @@ config_tests = {
             "lambda2": 10,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5
+            "n_epochs_personalization": 5,
+            "decoder_w": ["decoder"],
+            "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"]
         },
         "predictor": {
             "input_dim": 30,
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5
+            "n_epochs_personalization": 5,
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["fc1", "fc2", "fc3"]
         }
     }
 }

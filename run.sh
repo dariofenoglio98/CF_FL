@@ -27,7 +27,7 @@
 model="net"
 data_type="random"
 n_rounds=50
-dataset="diabetes"
+dataset="breast"
 n_clients=3
 pers=1
 
