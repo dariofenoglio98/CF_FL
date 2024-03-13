@@ -74,6 +74,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         
         # Perform evaluation on the server side on each single client after local training       
         # for each clients evaluate the model
+        client_data = {}
         for client, fit_res in results:
             print(f"Server-side evaluation of client {client.cid}")
             # Load model
@@ -83,6 +84,10 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             self.model.load_state_dict(state_dict, strict=True)
             # Evaluate the model
             client_metrics = utils.server_side_evaluation(data_type=self.data_type, dataset=self.dataset, model=self.model, config=self.model_config)
+            client_data[client.cid] = client_metrics
+        
+        # Aggregate metrics
+        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset)
 
         return aggregated_parameters, aggregated_metrics
 

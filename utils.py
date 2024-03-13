@@ -10,6 +10,7 @@ import os
 import csv
 from sklearn.metrics import accuracy_score
 import numpy as np
+from sklearn.decomposition import PCA
 
 
 
@@ -618,6 +619,7 @@ def server_side_evaluation(data_type="random", dataset="diabetes", model=None, c
     X_test = scaler.fit_transform(X.values)
     X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y.values).to(device)
+    y_test_one_hot = torch.nn.functional.one_hot(y_test.to(torch.int64), y_test.max()+1).float()
 
     # model = model(scaler, config).to(device)
     # if best_model_round == None:
@@ -628,6 +630,7 @@ def server_side_evaluation(data_type="random", dataset="diabetes", model=None, c
     model.scaler = scaler
     model.to(device)
     model.eval()
+    client_metrics = {}
     with torch.no_grad():
         if model.__class__.__name__ == "Predictor":
             y = model(X_test)
@@ -647,12 +650,58 @@ def server_side_evaluation(data_type="random", dataset="diabetes", model=None, c
             # x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
             # x_prime_rescaled = np.round(x_prime_rescaled)
             
-            validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
-            print(f"Validity: {validity}")
+            # validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+            # print(f"Validity: {validity}")
 
-            client_metrics = validity 
+            # client_metrics = validity 
+
+            # compute errors
+            p_out = torch.softmax(H_test, dim=-1)
+            errors = torch.abs(p_out[:, 0] - y_test_one_hot[:, 0])
+            client_metrics['errors'] = errors
+
+            # compute common changes
+            common_changes = (x_prime != X_test).sum(dim=-1).float()
+            client_metrics['common_changes'] = common_changes
+
+            # compute set of changed features
+            changed_features = torch.unique((x_prime != X_test).detach().cpu(), dim=-1).to(device)
+            client_metrics['changed_features'] = changed_features
 
             return client_metrics
+        
+def aggregate_metrics(client_data, server_round, data_type, dataset):
+    errors = []
+    common_changes = []
+    for client in client_data.keys():
+        errors.append(client_data[client]['errors'].unsqueeze(0))
+        common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
+    errors = torch.cat(errors, dim=0)
+    common_changes = torch.cat(common_changes, dim=0)
+    print(errors.shape, common_changes.shape)
+
+    # pca reduction
+    pca = PCA(n_components=2)
+    errors_pca = pca.fit_transform(errors.cpu().detach().numpy())
+    common_changes_pca = pca.fit_transform(common_changes.cpu().detach().numpy())
+
+    # check if path exists
+    if not os.path.exists(f"results/{dataset}/{data_type}"):
+        os.makedirs(f"results/{dataset}/{data_type}")
+
+    # save errors and common changes
+    np.save(f"results/{dataset}/{data_type}/errors_{server_round}.npy", errors_pca)
+    np.save(f"results/{dataset}/{data_type}/common_changes_{server_round}.npy", common_changes_pca)
+
+    # IoU feature changed
+    for i in client_data.keys():
+        print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")
+        for j in client_data.keys():
+            if i != j:
+                iou = intersection_over_union(client_data[i]['changed_features'], client_data[j]['changed_features'])
+                print(f"IoU between client {i} and client {j}: {iou}")
+
+
 
 # distance metrics with training set
 def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: torch.Tensor):
