@@ -14,7 +14,32 @@ from sklearn.decomposition import PCA
 import copy
 
 
+def min_max_scaler(X, dataset="diabetes", feature_range=(0, 1)):
+    X_min = config_tests[dataset]['min']
+    X_max = config_tests[dataset]['max']
+    
+    # Scale X using its own minimum and maximum, this will produce a normalized version of X
+    X_std = (X - X_min) / (X_max - X_min)
+    
+    # Scale X_std to the feature_range
+    min, max = feature_range
+    X_scaled = X_std * (max - min) + min
+    
+    return X_scaled
 
+def inverse_min_max_scaler(X_scaled, dataset="diabetes", feature_range=(0, 1)):
+    X_min = config_tests[dataset]['min']
+    X_max = config_tests[dataset]['max']
+    # Extract the min and max from the feature_range
+    min, max = feature_range
+
+    # Convert back from feature_range to (0,1) scale
+    X_std = (X_scaled - min) / (max - min)
+
+    # Scale back to original range
+    X_original = X_std * (X_max - X_min) + X_min
+    
+    return X_original
 
 def randomize_class(a, include=True):
         # Get the number of classes and the number of samples
@@ -38,7 +63,7 @@ def randomize_class(a, include=True):
 # Model
 EPS = 1e-9
 class Net(nn.Module,):
-    def __init__(self, scaler=None, config=None):
+    def __init__(self, config=None):
         super(Net, self).__init__()
         self.fc1 = nn.Linear(config['input_dim'], 512)
         self.fc2 = nn.Linear(512, 256)
@@ -57,11 +82,11 @@ class Net(nn.Module,):
         self.dropout = nn.Dropout(p=config['drop_prob'])
         self.mask = config['mask']   
         self.binary_feature = config['binary_feature']
+        self.dataset = config['dataset']
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight.data)
-        self.scaler = scaler
 
     def get_mask(self, x):
         mask = torch.rand(x.shape).to(x.device)
@@ -141,9 +166,9 @@ class Net(nn.Module,):
         #x_prime_reconstructed = x_prime_reconstructed * (1 - self.mask) + (x * self.mask)
         if not self.training:
             x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1.03)
-            x_prime_reconstructed = self.scaler.inverse_transform(x_prime_reconstructed.detach().cpu().numpy())
+            x_prime_reconstructed = inverse_min_max_scaler(x_prime_reconstructed.detach().cpu().numpy(), dataset=self.dataset)
             x_prime_reconstructed = np.round(x_prime_reconstructed)
-            x_prime_reconstructed = self.scaler.transform(x_prime_reconstructed)
+            x_prime_reconstructed = min_max_scaler(x_prime_reconstructed, dataset=self.dataset)
             x_prime_reconstructed = torch.Tensor(x_prime_reconstructed).to(x.device)
         
         # predictor on counterfactuals
@@ -164,7 +189,7 @@ class Net(nn.Module,):
         return out, x_reconstructed, qz2_x, p_z2, out2, x_prime_reconstructed, qz3_z2_c_y_y_prime, pz3_z2_c_y, y_prime
 
 class ConceptVCNet(nn.Module,):
-    def __init__(self, scaler=None, config=None):
+    def __init__(self, config=None):
         super(ConceptVCNet, self).__init__()
 
         self.fc1 = nn.Linear(config["input_dim"], 512)
@@ -180,11 +205,11 @@ class ConceptVCNet(nn.Module,):
         self.dropout = nn.Dropout(p=config['drop_prob'])
         self.mask = config['mask']
         self.binary_feature = config['binary_feature']
+        self.dataset = config['dataset']
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight.data)
-        self.scaler = scaler
 
     def forward(self, x, mask_init=None, include=True):
         # standard forward pass (predictor)
@@ -223,9 +248,9 @@ class ConceptVCNet(nn.Module,):
 
         if not self.training:
             x_reconstructed = torch.clamp(x_reconstructed, min=0, max=1.03)
-            x_reconstructed = self.scaler.inverse_transform(x_reconstructed.detach().cpu().numpy())
+            x_reconstructed = inverse_min_max_scaler(x_reconstructed.detach().cpu().numpy(), dataset=self.dataset)
             x_reconstructed = np.round(x_reconstructed)
-            x_reconstructed = self.scaler.transform(x_reconstructed)
+            x_reconstructed = min_max_scaler(x_reconstructed, dataset=self.dataset)
             x_reconstructed = torch.Tensor(x_reconstructed).to(x.device)
 
         # predictor on counterfactuals
@@ -373,13 +398,13 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
         loss_test = loss_fn(H_test, y_test)
         acc_test = (torch.argmax(H_test, dim=1) == y_test).float().mean().item()
 
-        x_prime_rescaled = model.scaler.inverse_transform(x_reconstructed.detach().cpu().numpy())
+        x_prime_rescaled = inverse_min_max_scaler(x_reconstructed.detach().cpu().numpy(), dataset=model.dataset)
         x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
 
-        X_train_rescaled = model.scaler.inverse_transform(X_train.detach().cpu().numpy())
+        X_train_rescaled = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=model.dataset)
         X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
 
-        X_test_rescaled = model.scaler.inverse_transform(X_test.detach().cpu().numpy())
+        X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=model.dataset)
         X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
 
         validity = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
@@ -433,13 +458,13 @@ def evaluate(model, X_test, y_test, loss_fn, X_train, y_train):
         loss_test = loss_fn(H_test, y_test)
         acc_test = (torch.argmax(H_test, dim=1) == y_test).float().mean().item()
 
-        x_prime_rescaled = model.scaler.inverse_transform(x_prime.detach().cpu().numpy())
+        x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=model.dataset)
         x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
 
-        X_train_rescaled = model.scaler.inverse_transform(X_train.detach().cpu().numpy())
+        X_train_rescaled = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=model.dataset)
         X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
 
-        X_test_rescaled = model.scaler.inverse_transform(X_test.detach().cpu().numpy())
+        X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=model.dataset)
         X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
 
         validity = (torch.argmax(H2_test, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
@@ -478,18 +503,33 @@ def load_data(client_id="1",device="cpu", type='random', dataset="diabetes"):
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2)
     num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
 
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(X_train.values)
-    X_val = scaler.transform(X_val.values)
+    # scale data
+    X_train = min_max_scaler(X_train.values, dataset=dataset)
+    X_val = min_max_scaler(X_val.values, dataset=dataset)
     X_train = torch.Tensor(X_train).float().to(device)
     X_val = torch.Tensor(X_val).float().to(device)
     y_train = torch.LongTensor(y_train.values).to(device)
     y_val = torch.LongTensor(y_val.values).to(device)
     # add test set
-    X_test = scaler.transform(X_test.values)
+    X_test = min_max_scaler(X_test.values, dataset=dataset)
     X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y_test.values).to(device)
-    return X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler
+    return X_train, y_train, X_val, y_val, X_test, y_test, num_examples
+
+def load_data_test(data_type="random", dataset="diabetes"):
+        device = check_gpu(manual_seed=True, print_info=False)
+        df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
+        if dataset == "breast":
+            df_test = df_test.drop(columns=["Unnamed: 0"])
+        df_test = df_test.astype(int)
+        # Dataset split
+        X = df_test.drop('Labels', axis=1)
+        y = df_test['Labels']
+        # scale data
+        X_test = min_max_scaler(X.values, dataset=dataset)
+        X_test = torch.Tensor(X_test).float().to(device)
+        y_test = torch.LongTensor(y.values).to(device)
+        return X_test, y_test
 
 # load test data
 # def evaluation_central_test(data_type="random", dataset="diabetes", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None, config=None):
@@ -561,11 +601,10 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
     y = df_test['Labels']
 
     # scale data
-    scaler = MinMaxScaler()
-    X_test = scaler.fit_transform(X.values)
+    X_test = min_max_scaler(X.values, dataset=dataset)
     X_test = torch.Tensor(X_test).float().to(device)
 
-    model = model(scaler, config).to(device)
+    model = model(config).to(device)
     if best_model_round == None:
         model.load_state_dict(torch.load(model_path))
     else:
@@ -578,9 +617,10 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
         elif model.__class__.__name__ == "ConceptVCNet":
             H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False)
             x_prime = x_reconstructed
-    X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
+
+    X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
     X_test_rescaled = np.round(X_test_rescaled)
-    x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
+    x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
     x_prime_rescaled = np.round(x_prime_rescaled)
     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
@@ -648,8 +688,7 @@ def evaluation_central_test_predictor(data_type="random", dataset="diabetes", be
     y = df_test['Labels']
 
     # scale data
-    scaler = MinMaxScaler()
-    X_test = scaler.fit_transform(X.values)
+    X_test = min_max_scaler(X.values, dataset=dataset)
     X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y.values).to(device)
 
@@ -671,27 +710,14 @@ def evaluation_central_test_predictor(data_type="random", dataset="diabetes", be
     data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL.csv")
     return y, acc
 
-def server_side_evaluation(data_type="random", dataset="diabetes", model=None, config=None): # not efficient to load every time the dataset
+def server_side_evaluation(X_test, y_test, model=None, config=None): # not efficient to load every time the dataset
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
-    # load data
-    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
-    if dataset == "breast":
-        df_test = df_test.drop(columns=["Unnamed: 0"])
-    df_test = df_test.astype(int)
-    # Dataset split
-    X = df_test.drop('Labels', axis=1)
-    y = df_test['Labels']
-
-    # scale data
-    scaler = MinMaxScaler()
-    X_test = scaler.fit_transform(X.values)
-    X_test = torch.Tensor(X_test).float().to(device)
-    y_test = torch.LongTensor(y.values).to(device)
+    # # load data
     y_test_one_hot = torch.nn.functional.one_hot(y_test.to(torch.int64), y_test.max()+1).float()
 
-    model.scaler = scaler
+    # model.scaler = scaler
     model.to(device)
     model.eval()
     client_metrics = {}
@@ -909,8 +935,9 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     # load local clent data
     X_train_rescaled, y_train_list = [], []
     for i in range(1, n_clients+1):
-        X_train, y_train, _, _, _, _, _, scaler = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
-        X_train_rescaled.append(torch.Tensor(np.round(scaler.inverse_transform(X_train.detach().cpu().numpy()))))
+        X_train, y_train, _, _, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
+        #X_train_rescaled.append(torch.Tensor(np.round(scaler.inverse_transform(X_train.detach().cpu().numpy()))))
+        X_train_rescaled.append(torch.Tensor(np.round(min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
         y_train_list.append(y_train)
 
     X_train_rescaled_tot, y_train_tot = (torch.cat(X_train_rescaled), torch.cat(y_train_list))
@@ -924,13 +951,12 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     y = df_test['Labels']
 
     # scale data
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(X_train_rescaled_tot.cpu().numpy())
-    X_test = scaler.transform(X.values)
+    X_train = min_max_scaler(X_train_rescaled_tot.cpu().numpy(), dataset=dataset)
+    X_test = min_max_scaler(X.values, dataset=dataset)
     X_test = torch.Tensor(X_test).float().to(device)
 
     # load model
-    model = model(scaler, config).to(device)
+    model = model(config).to(device)
     if best_model_round == None:
         model.load_state_dict(torch.load(model_path))
     else:
@@ -944,10 +970,10 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
             H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
             x_prime = x_reconstructed
 
-    x_prime_rescaled = model.scaler.inverse_transform(x_prime.detach().cpu().numpy())
+    x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
     x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
 
-    X_test_rescaled = model.scaler.inverse_transform(X_test.detach().cpu().numpy())
+    X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
     X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
     
     # pass to cpus
@@ -1293,7 +1319,7 @@ def check_and_delete_metrics_file(folder_path, question=False):
 
 # predictor 
 class Predictor(nn.Module):
-    def __init__(self, scaler=None, config=None):
+    def __init__(self, config=None):
         super(Predictor, self).__init__()
         self.fc1 = nn.Linear(config["input_dim"], 512)
         self.fc2 = nn.Linear(512, 256)
@@ -1454,10 +1480,10 @@ def personalization(n_clients=3, model=None, data_type="random", dataset="diabet
     # load local clent data
     X_train_rescaled, X_train_list, X_val_list, y_train_list, y_val_list = [], [], [], [], []
     for i in range(1, n_clients+1):
-        X_train, y_train, X_val, y_val, _, _, _, scaler = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
-        X_train_rescaled.append(torch.Tensor(np.round(scaler.inverse_transform(X_train.detach().cpu().numpy()))))
+        X_train, y_train, X_val, y_val, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
+        X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
         X_train_list.append(X_train)
-        X_val_list.append(X_val)
+        X_val_list.append(X_val) 
         y_train_list.append(y_train)
         y_val_list.append(y_val)
 
@@ -1472,14 +1498,13 @@ def personalization(n_clients=3, model=None, data_type="random", dataset="diabet
     y = df_test['Labels']
 
     # scale data
-    scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(X_train_rescaled_tot.cpu().numpy())
-    X_test = scaler.transform(X.values)
+    X_train = min_max_scaler(X_train_rescaled_tot.cpu().numpy(), dataset=dataset)
+    X_test = min_max_scaler(X.values, dataset=dataset)
     X_test = torch.Tensor(X_test).float().to(device)
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
-    model = model(scaler, config).to(device)
+    model = model(config).to(device)
     model.load_state_dict(torch.load(config['checkpoint_folder'] + f"{data_type}/model_round_{best_model_round}.pth"))
 
     # freeze model - encoder
@@ -1518,9 +1543,9 @@ def personalization(n_clients=3, model=None, data_type="random", dataset="diabet
                     H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
                     x_prime = x_reconstructed
 
-            x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
+            x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
             x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-            X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
+            X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
             X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
             
             # pass to cpus
@@ -1610,6 +1635,7 @@ config_tests = {
     "diabetes": {
         "net": {
             "model_name": "net",
+            "dataset": "diabetes",
             "checkpoint_folder": "checkpoints/diabetes/net/",
             "history_folder": "histories/diabetes/net/",
             "image_folder": "images/diabetes/net/",
@@ -1635,6 +1661,7 @@ config_tests = {
         },
         "vcnet": {
             "model_name": "vcnet",
+            "dataset": "diabetes",
             "checkpoint_folder": "checkpoints/diabetes/vcnet/",
             "history_folder": "histories/diabetes/vcnet/",
             "image_folder": "images/diabetes/vcnet/",
@@ -1656,6 +1683,7 @@ config_tests = {
         },
         "predictor": {
             "model_name": "predictor",
+            "dataset": "diabetes",
             "checkpoint_folder": "checkpoints/diabetes/predictor/",
             "history_folder": "histories/diabetes/predictor/",
             "image_folder": "images/diabetes/predictor/",
@@ -1666,11 +1694,14 @@ config_tests = {
             "n_epochs_personalization": 5,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "to_freeze": ["fc1", "fc2", "fc3"]
-        }
+        },
+        "min" : np.array([0., 0., 0., 12., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 1., 1.]),
+        "max" : np.array([1., 1., 1., 98., 1., 1., 1., 1., 1., 1., 1., 1., 1., 5., 30., 30., 1., 1., 13., 6., 8.]),
     },
     "breast": {
         "net": {
             "model_name": "net",
+            "dataset": "breast",
             "checkpoint_folder": "checkpoints/breast/net/",
             "history_folder": "histories/breast/net/",
             "image_folder": "images/breast/net/",
@@ -1697,6 +1728,7 @@ config_tests = {
         },
         "vcnet": {
             "model_name": "vcnet",
+            "dataset": "breast",
             "checkpoint_folder": "checkpoints/breast/vcnet/",
             "history_folder": "histories/breast/vcnet/",
             "image_folder": "images/breast/vcnet/",
@@ -1718,6 +1750,7 @@ config_tests = {
         },
         "predictor": {
             "model_name": "predictor",
+            "dataset": "breast",
             "checkpoint_folder": "checkpoints/breast/predictor/",
             "history_folder": "histories/breast/predictor/",
             "image_folder": "images/breast/predictor/",
@@ -1728,6 +1761,16 @@ config_tests = {
             "n_epochs_personalization": 5,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "to_freeze": ["fc1", "fc2", "fc3"]
-        }
+        },
+        "min" : np.array([6.981e+00, 9.710e+00, 4.379e+01, 1.435e+02, 5.263e-02, 1.938e-02,
+                                0.000e+00, 0.000e+00, 1.060e-01, 4.996e-02, 1.115e-01, 3.602e-01,
+                                7.570e-01, 6.802e+00, 1.713e-03, 2.252e-03, 0.000e+00, 0.000e+00,
+                                7.882e-03, 8.948e-04, 7.930e+00, 1.202e+01, 5.041e+01, 1.852e+02,
+                                7.117e-02, 2.729e-02, 0.000e+00, 0.000e+00, 1.565e-01, 5.504e-02]),
+        "max" : np.array([2.811e+01, 3.928e+01, 1.885e+02, 2.501e+03, 1.634e-01, 3.454e-01,
+                                4.268e-01, 2.012e-01, 3.040e-01, 9.744e-02, 2.873e+00, 4.885e+00,
+                                2.198e+01, 5.422e+02, 3.113e-02, 1.354e-01, 3.960e-01, 5.279e-02,
+                                7.895e-02, 2.984e-02, 3.604e+01, 4.954e+01, 2.512e+02, 4.254e+03,
+                                2.226e-01, 1.058e+00, 1.252e+00, 2.910e-01, 6.638e-01, 2.075e-01]),
     }
 }

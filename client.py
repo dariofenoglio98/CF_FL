@@ -109,11 +109,11 @@ def main()->None:
     device = utils.check_gpu(manual_seed=True)
 
     # load data
-    X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler = utils.load_data(
+    X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(
         client_id=str(args.id), device=device, type=args.data_type, dataset=args.dataset)
 
     # Model
-    model = model(scaler=scaler, config=config).to(device)
+    model = model(config=config).to(device)
 
     # Optimizer and Loss function
     optimizer = torch.optim.SGD(model.parameters(), lr=config["learning_rate"], momentum=0.9)

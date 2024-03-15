@@ -5,6 +5,7 @@ from typing import List, Tuple, Union, Optional, Dict
 from flwr.common import Parameters, Scalar, Metrics
 from flwr.server.client_proxy import ClientProxy
 from flwr.common import FitRes
+import pandas as pd
 import argparse
 import torch
 import utils
@@ -42,6 +43,9 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         self.checkpoint_folder = checkpoint_folder
         self.dataset = dataset
         self.model_config = model_config
+
+        # read data for testing
+        self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
 
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
@@ -83,7 +87,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             self.model.load_state_dict(state_dict, strict=True)
             # Evaluate the model
-            client_metrics = utils.server_side_evaluation(data_type=self.data_type, dataset=self.dataset, model=self.model, config=self.model_config)
+            client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
             client_data[client.cid] = client_metrics
         
         # Aggregate metrics
@@ -151,7 +155,7 @@ def main() -> None:
 
     # Define strategy
     strategy = SaveModelStrategy(
-        model=model(scaler=None, config=config), # model to be trained
+        model=model(config=config), # model to be trained
         min_fit_clients=3, # Never sample less than 10 clients for training
         min_evaluate_clients=3,  # Never sample less than 5 clients for evaluation
         min_available_clients=3, # Wait until all 10 clients are available
