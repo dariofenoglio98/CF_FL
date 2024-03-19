@@ -5,7 +5,6 @@ from typing import List, Tuple, Union, Optional, Dict
 from flwr.common import Parameters, Scalar, Metrics
 from flwr.server.client_proxy import ClientProxy
 from flwr.common import FitRes
-import pandas as pd
 import argparse
 import torch
 import utils
@@ -120,7 +119,7 @@ def main() -> None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast'],
+        choices=['diabetes','breast','synthetic'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )

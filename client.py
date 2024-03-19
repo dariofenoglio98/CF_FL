@@ -4,8 +4,6 @@ import torch
 import utils
 import flwr as fl
 import argparse
-import os
-import json
 
 
 
@@ -82,7 +80,7 @@ def main()->None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast'],
+        choices=['diabetes','breast','synthetic'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )

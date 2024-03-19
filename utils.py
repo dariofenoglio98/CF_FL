@@ -5,10 +5,8 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
 import os
 import csv
-from sklearn.metrics import accuracy_score
 import numpy as np
 from sklearn.decomposition import PCA
 import copy
@@ -1047,6 +1045,12 @@ def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescal
        'symmetry2', 'fractal_dimension2', 'radius3', 'texture3', 'perimeter3',
        'area3', 'smoothness3', 'compactness3', 'concavity3', 'concave_points3',
        'symmetry3', 'fractal_dimension3'] 
+    elif dataset == "synthetic":
+        features = ['x1', 'x2']
+    else:
+        # raise error: "Error: dataset not found in visualize_examples"
+        raise ValueError("Error: dataset not found in visualize_examples")        
+    
 
     j = 0
     X_test_rescaled = np.rint(X_test_rescaled).astype(int)
@@ -1772,5 +1776,71 @@ config_tests = {
                                 2.198e+01, 5.422e+02, 3.113e-02, 1.354e-01, 3.960e-01, 5.279e-02,
                                 7.895e-02, 2.984e-02, 3.604e+01, 4.954e+01, 2.512e+02, 4.254e+03,
                                 2.226e-01, 1.058e+00, 1.252e+00, 2.910e-01, 6.638e-01, 2.075e-01]),
+    },
+    "synthetic": {
+        "net": {
+            "model_name": "net",
+            "dataset": "synthetic",
+            "checkpoint_folder": "checkpoints/synthetic/net/",
+            "history_folder": "histories/synthetic/net/",
+            "image_folder": "images/synthetic/net/",
+            "input_dim": 2,
+            "output_dim": 2,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0,0]), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0]),
+            "lambda1": 3,
+            "lambda2": 12,
+            "lambda3": 1,
+            "lambda4": 1.5,
+            "learning_rate": 0.01,
+            "learning_rate_personalization": 0.01,
+            "n_epochs_personalization": 5,
+            "decoder_w": ["decoder"],
+            "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
+            "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"]
+        },
+        "vcnet": {
+            "model_name": "vcnet",
+            "dataset": "synthetic",
+            "checkpoint_folder": "checkpoints/synthetic/vcnet/",
+            "history_folder": "histories/synthetic/vcnet/",
+            "image_folder": "images/synthetic/vcnet/",
+            "input_dim": 2,
+            "output_dim": 2,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0,0]), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0]),
+            "lambda1": 2,
+            "lambda2": 10,
+            "learning_rate": 0.01,
+            "learning_rate_personalization": 0.01,
+            "n_epochs_personalization": 5,
+            "decoder_w": ["decoder"],
+            "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"]
+        },
+        "predictor": {
+            "model_name": "predictor",
+            "dataset": "synthetic",
+            "checkpoint_folder": "checkpoints/synthetic/predictor/",
+            "history_folder": "histories/synthetic/predictor/",
+            "image_folder": "images/synthetic/predictor/",
+            "input_dim": 2,
+            "output_dim": 2,
+            "learning_rate": 0.01,
+            "learning_rate_personalization": 0.01,
+            "n_epochs_personalization": 5,
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["fc1", "fc2", "fc3"]
+        },
+        "min" : np.array([-5., -5.]),
+        "max" : np.array([5., 5.]),
     }
 }
