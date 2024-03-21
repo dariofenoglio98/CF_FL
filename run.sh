@@ -24,11 +24,11 @@
 #     exit 1
 # fi
 
-model="predictor"
+model="net"
 data_type="random"
-n_rounds=100
+n_rounds=150
 dataset="synthetic"
-n_clients=3
+n_clients=10
 pers=1
 
 echo "Starting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset"

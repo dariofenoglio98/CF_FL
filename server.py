@@ -212,7 +212,7 @@ def main() -> None:
         # Personalization
         print("\n\n\033[94mPersonalization\033[0m")
         # Personalization
-        utils.personalization(n_clients=args.n_clients, model=model, data_type=args.data_type, dataset=args.dataset, config=config, best_model_round=best_loss_round)
+        utils.personalization(n_clients=args.n_clients, model_fn=model, data_type=args.data_type, dataset=args.dataset, config=config, best_model_round=best_loss_round)
 
         # Print training time in minutes (grey color)
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")

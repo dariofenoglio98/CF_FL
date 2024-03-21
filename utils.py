@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 import os
 import csv
 import numpy as np
-from sklearn.decomposition import PCA
+from sklearn.decomposition import KernelPCA
 import copy
 
 
@@ -81,6 +81,7 @@ class Net(nn.Module,):
         self.mask = config['mask']   
         self.binary_feature = config['binary_feature']
         self.dataset = config['dataset']
+        self.round = config['output_round']
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -163,11 +164,12 @@ class Net(nn.Module,):
         #x_prime_reconstructed[:, ~self.binary_feature] = torch.clamp(x_prime_reconstructed[:, ~self.binary_feature], min=0, max=1)
         #x_prime_reconstructed = x_prime_reconstructed * (1 - self.mask) + (x * self.mask)
         if not self.training:
-            x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1.03)
-            x_prime_reconstructed = inverse_min_max_scaler(x_prime_reconstructed.detach().cpu().numpy(), dataset=self.dataset)
-            x_prime_reconstructed = np.round(x_prime_reconstructed)
-            x_prime_reconstructed = min_max_scaler(x_prime_reconstructed, dataset=self.dataset)
-            x_prime_reconstructed = torch.Tensor(x_prime_reconstructed).to(x.device)
+            x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=-0.03, max=1.03)
+            if self.round:
+                x_prime_reconstructed = inverse_min_max_scaler(x_prime_reconstructed.detach().cpu().numpy(), dataset=self.dataset)
+                x_prime_reconstructed = np.round(x_prime_reconstructed)
+                x_prime_reconstructed = min_max_scaler(x_prime_reconstructed, dataset=self.dataset)
+                x_prime_reconstructed = torch.Tensor(x_prime_reconstructed).to(x.device)
         
         # predictor on counterfactuals
         out2 = self.fc1(x_prime_reconstructed)
@@ -502,6 +504,7 @@ def load_data(client_id="1",device="cpu", type='random', dataset="diabetes"):
     num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
 
     # scale data
+    
     X_train = min_max_scaler(X_train.values, dataset=dataset)
     X_val = min_max_scaler(X_val.values, dataset=dataset)
     X_train = torch.Tensor(X_train).float().to(device)
@@ -760,20 +763,23 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config):
             common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
         errors = torch.cat(errors, dim=0)
         common_changes = torch.cat(common_changes, dim=0)
-        print(errors.shape, common_changes.shape)
 
         # pca reduction
-        pca = PCA(n_components=2)
-        errors_pca = pca.fit_transform(errors.cpu().detach().numpy())
-        common_changes_pca = pca.fit_transform(common_changes.cpu().detach().numpy())
-
+        pca = KernelPCA(n_components=2, random_state=42, kernel='cosine')
+        # generate random points around 0 with std 0.1 (errors shape)
+        torch.manual_seed(42)
+        rand_points = torch.normal(mean=0, std=0.1, size=(errors.shape))
+        rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
+        errors_pca = pca.transform(errors.cpu().detach().numpy())
+        common_changes_pca = pca.transform(common_changes.cpu().detach().numpy())
+        model_name = config["model_name"]
         # check if path exists
-        if not os.path.exists(f"results/{config["model_name"]}/{dataset}/{data_type}"):
-            os.makedirs(f"results/{config["model_name"]}/{dataset}/{data_type}")
+        if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}"):
+            os.makedirs(f"results/{model_name}/{dataset}/{data_type}")
 
         # save errors and common changes
-        np.save(f"results/{config["model_name"]}/{dataset}/{data_type}/errors_{server_round}.npy", errors_pca)
-        np.save(f"results/{config["model_name"]}/{dataset}/{data_type}/common_changes_{server_round}.npy", common_changes_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/errors_{server_round}.npy", errors_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/common_changes_{server_round}.npy", common_changes_pca)
 
         # IoU feature changed
         for i in client_data.keys():
@@ -800,7 +806,7 @@ def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: tor
     filter = y_ext.argmax(dim=-1) != y_set_ext.argmax(dim=-1)
 
     dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float) # !!!!! dist = (a_ext != b_ext).sum(dim=-1, dtype=torch.float)
-    dist[filter] = 210 # !!!!! dist[filter] = a.shape[-1]; min_distances = torch.min(dist, dim=-1)[0]
+    dist[filter] = 100000000 # !!!!! dist[filter] = a.shape[-1]; min_distances = torch.min(dist, dim=-1)[0]
     min_distances, min_index = torch.min(dist, dim=-1)
 
     ham_dist = ((a_ext != b_ext)).float().sum(dim=-1, dtype=torch.float)
@@ -1473,7 +1479,7 @@ def freeze_params(model, model_section):
 
 #         # save metrics
 
-def personalization(n_clients=3, model=None, data_type="random", dataset="diabetes", config=None, best_model_round=None):
+def personalization(n_clients=3, model_fn=None, data_type="random", dataset="diabetes", config=None, best_model_round=None):
     # function
     train_fn = trainings[config["model_name"]]
     evaluate_fn = evaluations[config["model_name"]]
@@ -1508,7 +1514,7 @@ def personalization(n_clients=3, model=None, data_type="random", dataset="diabet
     y_test = torch.LongTensor(y.values).to(device)
 
     # load model
-    model = model(config).to(device)
+    model = model_fn(config).to(device)
     model.load_state_dict(torch.load(config['checkpoint_folder'] + f"{data_type}/model_round_{best_model_round}.pth"))
 
     # freeze model - encoder
@@ -1519,6 +1525,7 @@ def personalization(n_clients=3, model=None, data_type="random", dataset="diabet
         print(f"\n\033[1;33mClient {c+1}\033[0m")
         # model and training parameters
         model_trained = copy.deepcopy(model_freezed)
+        # model_trained = model_fn(config).to(device)
         loss_fn = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(model_trained.parameters(), lr=config["learning_rate_personalization"], momentum=0.9)
         # train
@@ -1537,7 +1544,8 @@ def personalization(n_clients=3, model=None, data_type="random", dataset="diabet
                 "accuracy": [acc]
             })
             # save to csv
-            data.to_csv(f"histories/{dataset}/{config["model_name"]}/client_{data_type}_{c+1}/metrics_personalization.csv")
+            model_name = config["model_name"]
+            data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
         else:
             mask = config['mask_evaluation']
             with torch.no_grad():
@@ -1601,7 +1609,11 @@ def personalization(n_clients=3, model=None, data_type="random", dataset="diabet
                 "var": [var]
             })
             # save to csv
-            data.to_csv(f"histories/{dataset}/{config["model_name"]}/client_{data_type}_{c+1}/metrics_personalization.csv")
+            model_name = config["model_name"]
+            # create folder 
+            if not os.path.exists(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}"):
+                os.makedirs(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}")
+            data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
 
 
 
@@ -1661,7 +1673,8 @@ config_tests = {
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
             "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"], 
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"]
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "output_round": True,
         },
         "vcnet": {
             "model_name": "vcnet",
@@ -1683,7 +1696,8 @@ config_tests = {
             "decoder_w": ["decoder"],
             "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"]
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"],
+            "output_round": True,
         },
         "predictor": {
             "model_name": "predictor",
@@ -1697,7 +1711,8 @@ config_tests = {
             "learning_rate_personalization": 0.01,
             "n_epochs_personalization": 5,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["fc1", "fc2", "fc3"]
+            "to_freeze": ["fc1", "fc2", "fc3"],
+            "output_round": True,
         },
         "min" : np.array([0., 0., 0., 12., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 1., 1.]),
         "max" : np.array([1., 1., 1., 98., 1., 1., 1., 1., 1., 1., 1., 1., 1., 5., 30., 30., 1., 1., 13., 6., 8.]),
@@ -1727,8 +1742,8 @@ config_tests = {
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
             "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"], 
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"]
-        
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "output_round": False,
         },
         "vcnet": {
             "model_name": "vcnet",
@@ -1750,7 +1765,8 @@ config_tests = {
             "decoder_w": ["decoder"],
             "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"]
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"],
+            "output_round": False,
         },
         "predictor": {
             "model_name": "predictor",
@@ -1764,7 +1780,8 @@ config_tests = {
             "learning_rate_personalization": 0.01,
             "n_epochs_personalization": 5,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["fc1", "fc2", "fc3"]
+            "to_freeze": ["fc1", "fc2", "fc3"],
+            "output_round": False,
         },
         "min" : np.array([6.981e+00, 9.710e+00, 4.379e+01, 1.435e+02, 5.263e-02, 1.938e-02,
                                 0.000e+00, 0.000e+00, 1.060e-01, 4.996e-02, 1.115e-01, 3.602e-01,
@@ -1792,17 +1809,18 @@ config_tests = {
             "mask_evaluation": torch.Tensor([0,0]),
             "lambda1": 3,
             "lambda2": 12,
-            "lambda3": 1,
+            "lambda3": 3,
             "lambda4": 1.5,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 20,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
             "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"]
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5", "concept_mean_predictor", "concept_var_predictor"],
+            "output_round": False,
         },
         "vcnet": {
             "model_name": "vcnet",
@@ -1824,7 +1842,8 @@ config_tests = {
             "decoder_w": ["decoder"],
             "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"]
+            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"],
+            "output_round": False,
         },
         "predictor": {
             "model_name": "predictor",
@@ -1838,9 +1857,11 @@ config_tests = {
             "learning_rate_personalization": 0.01,
             "n_epochs_personalization": 5,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["fc1", "fc2", "fc3"]
+            "to_freeze": ["fc1", "fc2", "fc3"],
+            "output_round": False,
         },
         "min" : np.array([-5., -5.]),
         "max" : np.array([5., 5.]),
+        
     }
 }
