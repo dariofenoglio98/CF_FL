@@ -12,6 +12,7 @@ from sklearn.decomposition import KernelPCA
 import copy
 
 
+
 def min_max_scaler(X, dataset="diabetes", feature_range=(0, 1)):
     X_min = config_tests[dataset]['min']
     X_max = config_tests[dataset]['max']
@@ -971,10 +972,28 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     model.eval()
     with torch.no_grad():
         if model.__class__.__name__ == "Net":
-            H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+            # run test_repetition times to get the average: 
+            H2_test_list, x_prime_list, y_prime_list = [], [], []
+            for _ in range(test_repetitions):
+                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+                H2_test_list.append(H2_test)
+                x_prime_list.append(x_prime)
+                y_prime_list.append(y_prime)
+            H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+            x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+            y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
         elif model.__class__.__name__ == "ConceptVCNet":
-            H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
-            x_prime = x_reconstructed
+            # run test_repetition times to get the average:
+            H2_test_list, x_prime_list, y_prime_list = [], [], []
+            for _ in range(test_repetitions):
+                H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
+                x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
+                H2_test_list.append(H2_test)
+                x_prime_list.append(x_prime)
+                y_prime_list.append(y_prime)
+            H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+            x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+            y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
 
     x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
     x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
@@ -993,11 +1012,11 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
     print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
     mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
-    print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.3f}, {hamming_prox:.3f}, {relative_prox:.3f}")
+    print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
     mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
     for i in range(n_clients):
         mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
-        print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.3f}, {hamming_proxn:.3f}, {relative_proxn:.3f}")
+        print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
         mean_distance_list.append(mean_distance_n)
         hamming_prox_list.append(hamming_proxn)
         relative_prox_list.append(relative_proxn)
@@ -1554,10 +1573,31 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             mask = config['mask_evaluation']
             with torch.no_grad():
                 if model_trained.__class__.__name__ == "Net":
-                    H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
+                    #H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
+                    # run test_repetitions times and take the mean
+                    H2_test_list, x_prime_list, y_prime_list = [], [], []
+                    for _ in range(test_repetitions):
+                        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+                        H2_test_list.append(H2_test)
+                        x_prime_list.append(x_prime)
+                        y_prime_list.append(y_prime)
+                    H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+                    x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+                    y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
                 elif model_trained.__class__.__name__ == "ConceptVCNet":
-                    H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
-                    x_prime = x_reconstructed
+                    # run test_repetitions times and take the mean
+                    H2_test_list, x_prime_list, y_prime_list = [], [], []
+                    for _ in range(test_repetitions):
+                        H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
+                        x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
+                        H2_test_list.append(H2_test)
+                        x_prime_list.append(x_prime)
+                        y_prime_list.append(y_prime)
+                    H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+                    x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+                    y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+                    #H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
+                    #x_prime = x_reconstructed
 
             x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
             x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
@@ -1575,11 +1615,11 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
             print(f"\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
             mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
-            print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.3f}, {hamming_prox:.3f}, {relative_prox:.3f}")
+            print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
             mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
             for i in range(n_clients):
                 mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
-                print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.3f}, {hamming_proxn:.3f}, {relative_proxn:.3f}")
+                print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
                 mean_distance_list.append(mean_distance_n)
                 hamming_prox_list.append(hamming_proxn)
                 relative_prox_list.append(relative_proxn)
@@ -1649,6 +1689,9 @@ plot_functions = {
     "vcnet": plot_loss_and_accuracy_client, # same as net
     "predictor": plot_loss_and_accuracy_client_predictor
 }
+
+# general parameters
+test_repetitions = 1
 
 # Dictionary of model parameters
 config_tests = {
