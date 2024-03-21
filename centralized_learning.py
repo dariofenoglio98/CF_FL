@@ -92,7 +92,7 @@ def main()->None:
             # visualize the results
             utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset)
             # Evaluate distance with all training sets
-            utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=None, model=model_network, checkpoint_folder=checkpoint_folder, model_path=model_path, config=config)
+            utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=None, model_fn=model_network, checkpoint_folder=checkpoint_folder, model_path=model_path, config=config)
 
 
 

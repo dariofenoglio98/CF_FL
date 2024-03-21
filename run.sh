@@ -26,9 +26,9 @@
 
 model="net"
 data_type="random"
-n_rounds=150
+n_rounds=50
 dataset="synthetic"
-n_clients=10
+n_clients=6
 pers=1
 
 echo "Starting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset"

@@ -930,18 +930,17 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
 #     print('Variability: {:.2f}'.format(var))
 
 # evaluate distance with all training sets
-def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model=None, model_path=None, config=None):
+
+def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
-    mask = config['mask_evaluation']
-
     # load local clent data
-    X_train_rescaled, y_train_list = [], []
+    X_train_rescaled, X_train_list, y_train_list = [], [], []
     for i in range(1, n_clients+1):
         X_train, y_train, _, _, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
-        #X_train_rescaled.append(torch.Tensor(np.round(scaler.inverse_transform(X_train.detach().cpu().numpy()))))
-        X_train_rescaled.append(torch.Tensor(np.round(min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
+        X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
+        X_train_list.append(X_train)
         y_train_list.append(y_train)
 
     X_train_rescaled_tot, y_train_tot = (torch.cat(X_train_rescaled), torch.cat(y_train_list))
@@ -958,14 +957,17 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     X_train = min_max_scaler(X_train_rescaled_tot.cpu().numpy(), dataset=dataset)
     X_test = min_max_scaler(X.values, dataset=dataset)
     X_test = torch.Tensor(X_test).float().to(device)
+    #y_test = torch.LongTensor(y.values).to(device)
 
     # load model
-    model = model(config).to(device)
+    model = model_fn(config).to(device)
     if best_model_round == None:
         model.load_state_dict(torch.load(model_path))
     else:
         model.load_state_dict(torch.load(config['checkpoint_folder'] + f"{data_type}/model_round_{best_model_round}.pth"))
+
     # evaluate
+    mask = config['mask_evaluation']
     model.eval()
     with torch.no_grad():
         if model.__class__.__name__ == "Net":
@@ -976,7 +978,6 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
 
     x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
     x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-
     X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
     X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
     
@@ -985,18 +986,18 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     H2_test = H2_test.cpu()
     y_prime = y_prime.cpu() 
 
-    print(f"\n\033[1;32mValidity Evaluation - Counterfactual: Testing Set\033[0m")
     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
-    print(f"Counterfactual validity: {validity}")
+    print(f"\n\033[1;32mEvaluation on Testing Set - Server\033[0m")
+    print(f"Counterfactual validity: {validity:.4f}")
 
-    # evaluate distance training set - # you used x_prime and X_train (not scaled) !!!!!!!
-    print(f"\n\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
+    # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
+    print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
     mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
-    print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
+    print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.3f}, {hamming_prox:.3f}, {relative_prox:.3f}")
     mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
     for i in range(n_clients):
         mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
-        print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n}, {hamming_proxn}, {relative_proxn}")
+        print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.3f}, {hamming_proxn:.3f}, {relative_proxn:.3f}")
         mean_distance_list.append(mean_distance_n)
         hamming_prox_list.append(hamming_proxn)
         relative_prox_list.append(relative_proxn)
@@ -1007,8 +1008,7 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
     iou = intersection_over_union(x_prime_rescaled, X_train_rescaled_tot)
     var = variability(x_prime_rescaled, X_train_rescaled_tot)
-
-    print(f"\n\033[1;32mExtra metrics Evaluation - Counterfactual: Training Set\033[0m")
+    print(f"\033[1;32mExtra metrics Evaluation - Counterfactual: Training Set\033[0m")
     print('Hamming Distance: {:.2f}'.format(hamming_distance))
     print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
     print('Relative Distance: {:.2f}'.format(relative_distance))
@@ -1030,8 +1030,12 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
         "iou": [iou],
         "var": [var]
     })
+    # create folder
+    if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+        os.makedirs(config['history_folder'] + f"server_{data_type}/")
     # save to csv
     data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL.csv")
+
 
 
  # visualize examples
@@ -1566,16 +1570,16 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             y_prime = y_prime.cpu() 
 
             validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
-            print(f"Counterfactual validity client {c+1}: {validity}")
+            print(f"Counterfactual validity client {c+1}: {validity:.4f}")
 
             # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
             print(f"\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
             mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
-            print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
+            print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.3f}, {hamming_prox:.3f}, {relative_prox:.3f}")
             mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
             for i in range(n_clients):
                 mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
-                print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n}, {hamming_proxn}, {relative_proxn}")
+                print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.3f}, {hamming_proxn:.3f}, {relative_proxn:.3f}")
                 mean_distance_list.append(mean_distance_n)
                 hamming_prox_list.append(hamming_proxn)
                 relative_prox_list.append(relative_proxn)
