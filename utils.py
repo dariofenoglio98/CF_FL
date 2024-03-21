@@ -533,62 +533,6 @@ def load_data_test(data_type="random", dataset="diabetes"):
         y_test = torch.LongTensor(y.values).to(device)
         return X_test, y_test
 
-# load test data
-# def evaluation_central_test(data_type="random", dataset="diabetes", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None, config=None):
-#     # check device
-#     device = check_gpu(manual_seed=True, print_info=False)
-
-#     X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
-#     X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
-#     X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
-
-#     X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
-#     X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
-
-#     X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
-#     X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
-
-#     X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
-#     X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
-
-#     X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
-#                                 torch.cat((y_train_1, y_train_2, y_train_3)))
-    
-#     # load data
-#     df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
-#     if dataset == "breast":
-#         df_test = df_test.drop(columns=["Unnamed: 0"])
-#     df_test = df_test.astype(int)
-#     # Dataset split
-#     X = df_test.drop('Labels', axis=1)
-#     y = df_test['Labels']
-
-#     # scale data
-#     scaler = MinMaxScaler()
-#     X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
-#     X_test = scaler.transform(X.values)
-#     X_test = torch.Tensor(X_test).float().to(device)
-#     y_test = torch.LongTensor(y.values).to(device)
-
-#     model = model(scaler, config).to(device)
-#     if best_model_round == None:
-#         model.load_state_dict(torch.load(model_path))
-#     else:
-#         model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
-#     # evaluate
-#     model.eval()
-#     with torch.no_grad():
-#         if model.__class__.__name__ == "Net":
-#             H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
-#         elif model.__class__.__name__ == "ConceptVCNet":
-#             H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False)
-#             x_prime = x_reconstructed
-#     X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
-#     X_test_rescaled = np.round(X_test_rescaled)
-#     x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
-#     x_prime_rescaled = np.round(x_prime_rescaled)
-#     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
-
 def evaluation_central_test(data_type="random", dataset="diabetes", best_model_round=1, model=None, model_path=None, config=None):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
@@ -626,56 +570,6 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
     x_prime_rescaled = np.round(x_prime_rescaled)
     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
-# def evaluation_central_test_predictor(data_type="random", dataset="diabetes", best_model_round=1, model_path=None):    
-#     # check device
-#     device = check_gpu(manual_seed=True, print_info=False)
-
-#     X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
-#     X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
-#     X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
-
-#     X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
-#     X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
-
-#     X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
-#     X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
-
-#     X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
-#     X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
-
-#     X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
-#                                 torch.cat((y_train_1, y_train_2, y_train_3)))
-    
-#     # load data
-#     df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
-#     if dataset == "breast":
-#         df_test = df_test.drop(columns=["Unnamed: 0"])
-#     df_test = df_test.astype(int)
-#     # Dataset split
-#     X = df_test.drop('Labels', axis=1)
-#     y = df_test['Labels']
-
-#     # scale data
-#     scaler = MinMaxScaler()
-#     X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
-#     X_test = scaler.transform(X.values)
-#     X_test = torch.Tensor(X_test).float().to(device)
-#     y_test = torch.LongTensor(y.values).to(device)
-
-#     # load model
-#     config = config_tests[dataset]["predictor"]
-#     model = Predictor(config=config).to(device)
-#     if best_model_round == None:
-#         model.load_state_dict(torch.load(model_path))
-#     else:
-#         model.load_state_dict(torch.load(f"checkpoints/{dataset}/predictor/{data_type}/model_round_{best_model_round}.pth"))
-#     # evaluate
-#     model.eval()
-#     with torch.no_grad():
-#         y = model(X_test)
-#         acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
-#     return y, acc
-
 def evaluation_central_test_predictor(data_type="random", dataset="diabetes", best_model_round=1, model_path=None, config=None):    
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
@@ -709,6 +603,9 @@ def evaluation_central_test_predictor(data_type="random", dataset="diabetes", be
     
     # save metric
     data = pd.DataFrame({"accuracy": [acc]})
+    # create folder
+    if not os.path.exists(config['history_folder'] + f"{data_type}"):
+        os.makedirs(config['history_folder'] + f"{data_type}")
     data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL.csv")
     return y, acc
 
@@ -838,100 +735,6 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     # return len(intersection) / len(union) if len(union) else -1
     return len(intersection) / a.shape[0]
 
-# evaluate distance with all training sets
-# def evaluate_distance(n_clients=3,data_type="random", dataset="diabetes", best_model_round=1, model=None, checkpoint_folder="checkpoint/", model_path=None, config=None):
-#     # check device
-#     device = check_gpu(manual_seed=True, print_info=False)
-
-#     mask = config['mask_evaluation']
-#     # load local client data
-#     X_train_1, y_train_1, _, _, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
-#     X_train_2, y_train_2, _, _, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
-#     X_train_3, y_train_3, _, _, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
-
-#     X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
-#     X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
-
-#     X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
-#     X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
-
-#     X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
-#     X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
-
-#     X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
-#                                 torch.cat((y_train_1, y_train_2, y_train_3)))
-#     # load data
-#     df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
-#     if dataset == "breast":
-#         df_test = df_test.drop(columns=["Unnamed: 0"])
-#     # Dataset split
-#     X = df_test.drop('Labels', axis=1)
-#     y = df_test['Labels']
-
-#     # scale data
-#     scaler = MinMaxScaler()
-#     X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
-#     X_test = scaler.transform(X.values)
-#     X_test = torch.Tensor(X_test).float().to(device)
-#     y_test = torch.LongTensor(y.values).to(device)
-
-#     # load model
-#     model = model(scaler, config).to(device)
-#     if best_model_round == None:
-#         model.load_state_dict(torch.load(model_path))
-#     else:
-#         model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
-#     # evaluate
-#     model.eval()
-#     with torch.no_grad():
-#         if model.__class__.__name__ == "Net":
-#             H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
-#         elif model.__class__.__name__ == "ConceptVCNet":
-#             H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
-#             x_prime = x_reconstructed
-
-#     x_prime_rescaled = model.scaler.inverse_transform(x_prime.detach().cpu().numpy())
-#     x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-
-#     X_test_rescaled = model.scaler.inverse_transform(X_test.detach().cpu().numpy())
-#     X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
-    
-#     # pass to cpus
-#     x_prime =  x_prime.cpu()
-#     H2_test = H2_test.cpu()
-#     y_prime = y_prime.cpu() 
-
-#     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
-
-#     print(f"\n\033[1;32mValidity Evaluation - Counterfactual: Testing Set\033[0m")
-#     print(f"Counterfactual validity: {validity}")
-
-#     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
-#     mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled.cpu(), H2_test, y_train.cpu())
-#     mean_distance_1, hamming_prox1, relative_prox1 = distance_train(x_prime_rescaled, X_train_1_rescaled.cpu(), H2_test, y_train_1.cpu())
-#     mean_distance_2, hamming_prox2, relative_prox2 = distance_train(x_prime_rescaled, X_train_2_rescaled.cpu(), H2_test, y_train_2.cpu())
-#     mean_distance_3, hamming_prox3, relative_prox3 = distance_train(x_prime_rescaled, X_train_3_rescaled.cpu(), H2_test, y_train_3.cpu())
-#     print(f"\n\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-#     print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
-#     print(f"Mean distance with training set 1 (proximity, hamming proximity, relative proximity): {mean_distance_1}, {hamming_prox1}, {relative_prox1}")
-#     print(f"Mean distance with training set 2 (proximity, hamming proximity, relative proximity): {mean_distance_2}, {hamming_prox2}, {relative_prox2}")
-#     print(f"Mean distance with training set 3 (proximity, hamming proximity, relative proximity): {mean_distance_3}, {hamming_prox3}, {relative_prox3}")
-
-#     hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
-#     euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
-#     relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
-#     iou = intersection_over_union(x_prime_rescaled, X_train_rescaled)
-#     var = variability(x_prime_rescaled, X_train_rescaled)
-
-#     print(f"\n\033[1;32mExtra metrics Evaluation - Counterfactual: Training Set\033[0m")
-#     print('Hamming Distance: {:.2f}'.format(hamming_distance))
-#     print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
-#     print('Relative Distance: {:.2f}'.format(relative_distance))
-#     print('Intersection over Union: {:.2f}'.format(iou))
-#     print('Variability: {:.2f}'.format(var))
-
-# evaluate distance with all training sets
-
 def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
@@ -989,7 +792,6 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
                 H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
                 x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
                 H2_test_list.append(H2_test)
-                x_prime_list.append(x_prime)
                 y_prime_list.append(y_prime)
             H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
             x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
@@ -1385,123 +1187,6 @@ def freeze_params(model, model_section):
             param.requires_grad = False
     return model
 
-# def personalization(n_clients=3,model=None, model_name="net", data_type="random", dataset="diabetes", config=None, images_folder="images/", checkpoint_folder="checkpoints/", best_model_round=None):
-#     # function
-#     train_fn = trainings[model_name]
-#     evaluate_fn = evaluations[model_name]
-    
-#     # check device
-#     device = check_gpu(manual_seed=True, print_info=False)
-
-#     # load data
-#     X_train_1, y_train_1, X_val1, y_val1, _, _, _, scaler1 = load_data(client_id="1",device=device, type=data_type, dataset=dataset)
-#     X_train_2, y_train_2, X_val2, y_val2, _, _, _, scaler2 = load_data(client_id="2",device=device, type=data_type, dataset=dataset)
-#     X_train_3, y_train_3, X_val3, y_val3, _, _, _, scaler3 = load_data(client_id="3",device=device, type=data_type, dataset=dataset)
-#     X_train_list = [X_train_1, X_train_2, X_train_3]
-#     y_train_list = [y_train_1, y_train_2, y_train_3]
-#     X_val_list = [X_val1, X_val2, X_val3]
-#     y_val_list = [y_val1, y_val2, y_val3]
-
-#     X_train_1_rescaled = scaler1.inverse_transform(X_train_1.detach().cpu().numpy())
-#     X_train_1_rescaled = torch.Tensor(np.round(X_train_1_rescaled))
-
-#     X_train_2_rescaled = scaler2.inverse_transform(X_train_2.detach().cpu().numpy())
-#     X_train_2_rescaled = torch.Tensor(np.round(X_train_2_rescaled))
-
-#     X_train_3_rescaled = scaler3.inverse_transform(X_train_3.detach().cpu().numpy())
-#     X_train_3_rescaled = torch.Tensor(np.round(X_train_3_rescaled))
-
-#     X_train_rescaled, y_train = (torch.cat((X_train_1_rescaled, X_train_2_rescaled, X_train_3_rescaled)),
-#                                 torch.cat((y_train_1, y_train_2, y_train_3)))
-#     # load data
-#     df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
-#     if dataset == "breast":
-#         df_test = df_test.drop(columns=["Unnamed: 0"])
-#     # Dataset split
-#     X = df_test.drop('Labels', axis=1)
-#     y = df_test['Labels']
-
-#     # scale data
-#     scaler = MinMaxScaler()
-#     X_train = scaler.fit_transform(X_train_rescaled.cpu().numpy())
-#     X_test = scaler.transform(X.values)
-#     X_test = torch.Tensor(X_test).float().to(device)
-#     y_test = torch.LongTensor(y.values).to(device)
-
-#     # load model
-#     model = model(scaler, config).to(device)
-#     model.load_state_dict(torch.load(checkpoint_folder + f"{data_type}/model_round_{best_model_round}.pth"))
-
-#     # freeze model - encoder
-#     model_freezed = freeze_params(model, config["to_freeze"])
-
-#     # local training and evaluation
-#     for c in range(3):
-#         print(f"\n\033[1;33mClient {c+1}\033[0m")
-#         model_trained = copy.deepcopy(model_freezed)
-#         loss_fn = torch.nn.CrossEntropyLoss()
-#         optimizer = torch.optim.SGD(model_trained.parameters(), lr=config["learning_rate_personalization"], momentum=0.9)
-#         # train
-#         model_trained, train_loss, val_loss, acc, acc_prime, acc_val = train_fn(
-#                 model_trained, loss_fn, optimizer, X_train_list[c], y_train_list[c], X_val_list[c],
-#                 y_val_list[c], n_epochs=config["n_epochs_personalization"], print_info=False, config=config, save_best=True)
-
-#         # evaluate
-#         model_trained.eval()
-#         if model_trained.__class__.__name__ == "Predictor":
-#             with torch.no_grad():
-#                 y = model_trained(X_test)
-#                 acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
-#             print(f"Predictor Accuracy: {acc}")
-#         else:
-#             mask = config['mask_evaluation']
-#             with torch.no_grad():
-#                 if model_trained.__class__.__name__ == "Net":
-#                     H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
-#                 elif model_trained.__class__.__name__ == "ConceptVCNet":
-#                     H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
-#                     x_prime = x_reconstructed
-
-#             x_prime_rescaled = scaler.inverse_transform(x_prime.detach().cpu().numpy())
-#             x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-#             X_test_rescaled = scaler.inverse_transform(X_test.detach().cpu().numpy())
-#             X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
-            
-#             # pass to cpus
-#             x_prime =  x_prime.cpu()
-#             H2_test = H2_test.cpu()
-#             y_prime = y_prime.cpu() 
-
-#             validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
-
-#             print(f"Counterfactual validity client {c+1}: {validity}")
-
-#             # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
-#             mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled.cpu(), H2_test, y_train.cpu())
-#             mean_distance_1, hamming_prox1, relative_prox1 = distance_train(x_prime_rescaled, X_train_1_rescaled.cpu(), H2_test, y_train_1.cpu())
-#             mean_distance_2, hamming_prox2, relative_prox2 = distance_train(x_prime_rescaled, X_train_2_rescaled.cpu(), H2_test, y_train_2.cpu())
-#             mean_distance_3, hamming_prox3, relative_prox3 = distance_train(x_prime_rescaled, X_train_3_rescaled.cpu(), H2_test, y_train_3.cpu())
-#             print(f"\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
-#             print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
-#             print(f"Mean distance with training set 1 (proximity, hamming proximity, relative proximity): {mean_distance_1}, {hamming_prox1}, {relative_prox1}")
-#             print(f"Mean distance with training set 2 (proximity, hamming proximity, relative proximity): {mean_distance_2}, {hamming_prox2}, {relative_prox2}")
-#             print(f"Mean distance with training set 3 (proximity, hamming proximity, relative proximity): {mean_distance_3}, {hamming_prox3}, {relative_prox3}")
-
-#             hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
-#             euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
-#             relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
-#             iou = intersection_over_union(x_prime_rescaled, X_train_rescaled)
-#             var = variability(x_prime_rescaled, X_train_rescaled)
-
-#             print(f"\033[1;32mExtra metrics Evaluation - Counterfactual:Training Set\033[0m")
-#             print('Hamming Distance: {:.2f}'.format(hamming_distance))
-#             print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
-#             print('Relative Distance: {:.2f}'.format(relative_distance))
-#             print('Intersection over Union: {:.2f}'.format(iou))
-#             print('Variability: {:.2f}'.format(var))
-
-#         # save metrics
-
 def personalization(n_clients=3, model_fn=None, data_type="random", dataset="diabetes", config=None, best_model_round=None):
     # function
     train_fn = trainings[config["model_name"]]
@@ -1591,7 +1276,6 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
                         H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
                         x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
                         H2_test_list.append(H2_test)
-                        x_prime_list.append(x_prime)
                         y_prime_list.append(y_prime)
                     H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
                     x_prime = torch.mean(torch.stack(x_prime_list), dim=0)

@@ -2,6 +2,7 @@
 
 # Choose the dataset
 dataset="breast"  # breast or diabetes
+n_clients=3
 
 # Array of data types
 declare -a data_types=("random" "cluster" "2cluster")
@@ -21,7 +22,7 @@ for data_type in "${data_types[@]}"; do
         fi
         
         # Run the Python script with the current combination of parameters
-        echo -e "\n\n\n\nRunning: --data_type $data_type --dataset $dataset --model $model --n_epochs $n_epochs" 
-        python centralized_learning.py --data_type "$data_type" --dataset "$dataset" --model "$model" --n_epochs "$n_epochs" 
+        echo -e "\n\n\n\nRunning: --data_type $data_type --dataset $dataset --model $model --n_epochs $n_epochs --n_clients $n_clients" 
+        python centralized_learning.py --data_type "$data_type" --dataset "$dataset" --model "$model" --n_epochs "$n_epochs" --n_clients $n_clients
     done
 done

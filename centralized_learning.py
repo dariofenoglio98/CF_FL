@@ -18,7 +18,7 @@ def main()->None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast'],
+        choices=['diabetes','breast','synthetic'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )
@@ -35,6 +35,12 @@ def main()->None:
         choices=['net','vcnet', 'predictor'],
         help="Specifies the model to be trained",
     )
+    parser.add_argument(
+        "--n_clients",
+        type=int,
+        default=3,
+        help="Specifies the number of clients to be used for training and evaluation",
+    )
     args = parser.parse_args()
 
     # print model
@@ -44,22 +50,21 @@ def main()->None:
     device = utils.check_gpu(manual_seed=True)
 
     # load data
-    for client_id in range(1, 4):
+    for client_id in range(1, args.n_clients+1):
         # print client id in blue
         print(f"\n\n\033[34mClient {client_id} -- {args.model}\033[0m")
-        X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler = utils.load_data(
+        X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(
             client_id=str(client_id),device=device, type=args.data_type, dataset=args.dataset)
 
         # model and history folder
         model_network = utils.models[args.model]
         train_fn = utils.trainings[args.model]
-        checkpoint_folder = utils.checkpoints[f"{args.model}_{args.dataset}"]
-        images_folder = utils.images[f"{args.model}_{args.dataset}"]
+        evaluate_fn = utils.evaluations[args.model]
+        plot_fn = utils.plot_functions[args.model]
         config = utils.config_tests[args.dataset][args.model]
 
-
         # Model
-        model = model_network(scaler=scaler, config=config).to(device)
+        model = model_network(config=config).to(device)
 
         # Optimizer and Loss function
         optimizer = torch.optim.SGD(model.parameters(), lr=config["learning_rate"], momentum=0.9)
@@ -73,27 +78,26 @@ def main()->None:
             X_val, y_val, n_epochs=args.n_epochs, save_best=True, print_info=False,config=config)
         
         # Save model
-        if not os.path.exists(checkpoint_folder + f"{args.data_type}"):
-            os.makedirs(checkpoint_folder + f"{args.data_type}")
-        model_path = checkpoint_folder + f"{args.data_type}/centralized_client_{client_id}.pth"
+        if not os.path.exists(config['checkpoint_folder'] + f"{args.data_type}"):
+            os.makedirs(config['checkpoint_folder'] + f"{args.data_type}")
+        model_path = config['checkpoint_folder'] + f"{args.data_type}/centralized_client_{client_id}.pth"
         torch.save(model.state_dict(), model_path)
 
         # Plot loss and accuracy using the previous lists
-        utils.plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type=args.data_type, client_id=client_id, image_folder=images_folder, show=False)
+        utils.plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type=args.data_type, client_id=client_id, image_folder=config['image_folder'], show=False)
 
         # Evaluate the model on the test set
-        if args.model == 'predictor':
+        if args.model == 'predictor': # adjust this code
             y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type,
                                                             dataset=args.dataset, best_model_round=None, model_path=model_path)
             print(f"Accuracy on test set: {accuracy}")
         else:
             H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
-                                                    best_model_round=None, model=model_network, checkpoint_folder=checkpoint_folder, model_path=model_path, config=config)
+                                                    best_model_round=None, model=model_network, model_path=model_path, config=config)
             # visualize the results
             utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset)
             # Evaluate distance with all training sets
-            utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=None, model_fn=model_network, checkpoint_folder=checkpoint_folder, model_path=model_path, config=config)
-
+            utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=None, model_fn=model_network, model_path=model_path, config=config)
 
 
 

@@ -24,7 +24,7 @@
 #     exit 1
 # fi
 
-model="net"
+model="vcnet"
 data_type="random"
 n_rounds=50
 dataset="synthetic"
