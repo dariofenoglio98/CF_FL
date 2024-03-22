@@ -44,14 +44,14 @@ class FlowerClient(fl.client.NumPyClient):
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
         if self.model.__class__.__name__ == "Predictor":
-            loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn)
+            loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn, config=self.config)
             # save loss and accuracy client
             utils.save_client_metrics(config["current_round"], loss, accuracy, 0, client_id=self.client_id,
                                     data_type=self.data_type, tot_rounds=config['tot_rounds'], history_folder=self.history_folder)
             return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(0)}
 
         else:
-            loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = self.evaluate_fn(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train)
+            loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = self.evaluate_fn(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train, config=self.config)
             # save loss and accuracy client
             utils.save_client_metrics(config["current_round"], loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability,
                                     self.client_id, self.data_type, config['tot_rounds'], self.history_folder)

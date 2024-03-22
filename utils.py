@@ -392,7 +392,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         return model, train_loss, val_loss, acc, acc_prime, acc_val
 
 # evaluate vcnet
-def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
+def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train, config=None):
     model.eval()
     with torch.no_grad():
         H_test, x_reconstructed, q, y_prime, H2 = model(X_test, include=False)
@@ -400,13 +400,17 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train):
         acc_test = (torch.argmax(H_test, dim=1) == y_test).float().mean().item()
 
         x_prime_rescaled = inverse_min_max_scaler(x_reconstructed.detach().cpu().numpy(), dataset=model.dataset)
-        x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-
         X_train_rescaled = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=model.dataset)
-        X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
-
         X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=model.dataset)
-        X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+
+        if config["output_round"]:
+            x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
+            X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
+            X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+        else:
+            x_prime_rescaled = torch.Tensor(x_prime_rescaled)
+            X_train_rescaled = torch.Tensor(X_train_rescaled)
+            X_test_rescaled = torch.Tensor(X_test_rescaled)
 
         validity = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
 
@@ -452,7 +456,7 @@ def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n
         return model, loss_train, loss_val, acc_train, 0, acc_val
 
 # evaluate our model
-def evaluate(model, X_test, y_test, loss_fn, X_train, y_train):
+def evaluate(model, X_test, y_test, loss_fn, X_train, y_train, config=None):
     model.eval()
     with torch.no_grad():
         H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
@@ -460,13 +464,17 @@ def evaluate(model, X_test, y_test, loss_fn, X_train, y_train):
         acc_test = (torch.argmax(H_test, dim=1) == y_test).float().mean().item()
 
         x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=model.dataset)
-        x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-
         X_train_rescaled = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=model.dataset)
-        X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
-
         X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=model.dataset)
-        X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+
+        if config["output_round"]:
+            x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
+            X_train_rescaled = torch.Tensor(np.round(X_train_rescaled))
+            X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+        else:
+            x_prime_rescaled = torch.Tensor(x_prime_rescaled)
+            X_train_rescaled = torch.Tensor(X_train_rescaled)
+            X_test_rescaled = torch.Tensor(X_test_rescaled)
 
         validity = (torch.argmax(H2_test, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
 
@@ -480,7 +488,7 @@ def evaluate(model, X_test, y_test, loss_fn, X_train, y_train):
     return loss_test.item(), acc_test, validity, proximity, hamming_distance, euclidean_distance, iou, var
 
 # evaluate predictor 
-def evaluate_predictor(model, X_test, y_test, loss_fn):
+def evaluate_predictor(model, X_test, y_test, loss_fn, config=None):
     model.eval()
     with torch.no_grad():
         y_pred = model(X_test)
@@ -494,7 +502,7 @@ def load_data(client_id="1",device="cpu", type='random', dataset="diabetes"):
     df_train = pd.read_csv(f'data/df_{dataset}_{type}_{client_id}.csv')
     if dataset == "breast":
         df_train = df_train.drop(columns=["Unnamed: 0"])
-    df_train = df_train.astype(int)
+    #df_train = df_train.astype(int)
     # Dataset split
     X = df_train.drop('Labels', axis=1)
     y = df_train['Labels']
@@ -505,7 +513,6 @@ def load_data(client_id="1",device="cpu", type='random', dataset="diabetes"):
     num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
 
     # scale data
-    
     X_train = min_max_scaler(X_train.values, dataset=dataset)
     X_val = min_max_scaler(X_val.values, dataset=dataset)
     X_train = torch.Tensor(X_train).float().to(device)
@@ -523,7 +530,7 @@ def load_data_test(data_type="random", dataset="diabetes"):
         df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
         if dataset == "breast":
             df_test = df_test.drop(columns=["Unnamed: 0"])
-        df_test = df_test.astype(int)
+        #df_test = df_test.astype(int)
         # Dataset split
         X = df_test.drop('Labels', axis=1)
         y = df_test['Labels']
@@ -541,7 +548,7 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
     df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
     if dataset == "breast":
         df_test = df_test.drop(columns=["Unnamed: 0"])
-    df_test = df_test.astype(int)
+    #df_test = df_test.astype(int)
     # Dataset split
     X = df_test.drop('Labels', axis=1)
     y = df_test['Labels']
@@ -565,9 +572,11 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
             x_prime = x_reconstructed
 
     X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
-    X_test_rescaled = np.round(X_test_rescaled)
     x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
-    x_prime_rescaled = np.round(x_prime_rescaled)
+    if config["output_round"]:
+        X_test_rescaled = np.round(X_test_rescaled)
+        x_prime_rescaled = np.round(x_prime_rescaled)
+        
     return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
 def evaluation_central_test_predictor(data_type="random", dataset="diabetes", best_model_round=1, model_path=None, config=None):    
@@ -578,7 +587,7 @@ def evaluation_central_test_predictor(data_type="random", dataset="diabetes", be
     df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
     if dataset == "breast":
         df_test = df_test.drop(columns=["Unnamed: 0"])
-    df_test = df_test.astype(int)
+    #df_test = df_test.astype(int)
     # Dataset split
     X = df_test.drop('Labels', axis=1)
     y = df_test['Labels']
@@ -743,14 +752,20 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     X_train_rescaled, X_train_list, y_train_list = [], [], []
     for i in range(1, n_clients+1):
         X_train, y_train, _, _, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
-        X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
+        #X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
+        aux = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset)
+        if config["output_round"]:
+            X_train_rescaled.append(torch.Tensor(np.round(aux)))
+        else: 
+            X_train_rescaled.append(torch.Tensor(aux))
         X_train_list.append(X_train)
         y_train_list.append(y_train)
 
     X_train_rescaled_tot, y_train_tot = (torch.cat(X_train_rescaled), torch.cat(y_train_list))
 
     # load data
-    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
+    #df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
+    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
     if dataset == "breast":
         df_test = df_test.drop(columns=["Unnamed: 0"])
     # Dataset split
@@ -798,9 +813,13 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
             y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
 
     x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
-    x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
     X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
-    X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+    if config["output_round"]:
+        x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
+        X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+    else:
+        x_prime_rescaled = torch.Tensor(x_prime_rescaled)
+        X_test_rescaled = torch.Tensor(X_test_rescaled)
     
     # pass to cpus
     x_prime =  x_prime.cpu()
@@ -860,7 +879,7 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
 
 
  # visualize examples
-def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random", dataset="diabetes"):
+def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random", dataset="diabetes", config=None):
     print(f"\n\n\033[95mVisualizing the results of the best model ({data_type}) on the test set ({dataset})...\033[0m")
     if dataset == "diabetes":
         features = ['HighBP', 'HighChol', 'CholCheck', 'BMI', 'Smoker',
@@ -884,8 +903,9 @@ def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescal
     
 
     j = 0
-    X_test_rescaled = np.rint(X_test_rescaled).astype(int)
-    x_prime_rescaled = np.rint(x_prime_rescaled).astype(int)
+    if config["output_round"]:
+        X_test_rescaled = np.rint(X_test_rescaled).astype(int)
+        x_prime_rescaled = np.rint(x_prime_rescaled).astype(int)
     for i, s in enumerate(X_test_rescaled):
         if j > 5:
             break
@@ -897,7 +917,7 @@ def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescal
             c = 0
             for el in X_test_rescaled[i] != x_prime_rescaled[i]:
                 if el:
-                    print(f'Feature: {features[c]} from {X_test_rescaled[i][c]} to {x_prime_rescaled[i][c]}')
+                    print(f'Feature: {features[c]} from {X_test_rescaled[i][c]:.4f} to {x_prime_rescaled[i][c]:.4f}')
                 c += 1
 
 # define device
@@ -1199,7 +1219,12 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
     X_train_rescaled, X_train_list, X_val_list, y_train_list, y_val_list = [], [], [], [], []
     for i in range(1, n_clients+1):
         X_train, y_train, X_val, y_val, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
-        X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
+        #X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
+        aux = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset)
+        if config["output_round"]:
+            X_train_rescaled.append(torch.Tensor(np.round(aux)))
+        else:
+            X_train_rescaled.append(torch.Tensor(aux))
         X_train_list.append(X_train)
         X_val_list.append(X_val) 
         y_train_list.append(y_train)
@@ -1208,7 +1233,8 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
     X_train_rescaled_tot, y_train_tot = (torch.cat(X_train_rescaled), torch.cat(y_train_list))
 
     # load data
-    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
+    #df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
+    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
     if dataset == "breast":
         df_test = df_test.drop(columns=["Unnamed: 0"])
     # Dataset split
@@ -1284,9 +1310,13 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
                     #x_prime = x_reconstructed
 
             x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
-            x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
             X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
-            X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+            if config["output_round"]:
+                x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
+                X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+            else:
+                x_prime_rescaled = torch.Tensor(x_prime_rescaled)
+                X_test_rescaled = torch.Tensor(X_test_rescaled)
             
             # pass to cpus
             x_prime =  x_prime.cpu()

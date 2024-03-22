@@ -26,9 +26,9 @@
 
 model="vcnet"
 data_type="random"
-n_rounds=50
+n_rounds=100
 dataset="synthetic"
-n_clients=6
+n_clients=3
 pers=1
 
 echo "Starting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset"

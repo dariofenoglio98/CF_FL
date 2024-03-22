@@ -95,7 +95,7 @@ def main()->None:
             H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
                                                     best_model_round=None, model=model_network, model_path=model_path, config=config)
             # visualize the results
-            utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset)
+            utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset, config=config)
             # Evaluate distance with all training sets
             utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=None, model_fn=model_network, model_path=model_path, config=config)
 
