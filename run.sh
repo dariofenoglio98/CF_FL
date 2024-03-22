@@ -24,10 +24,10 @@
 #     exit 1
 # fi
 
-model="vcnet"
-data_type="random"
-n_rounds=100
-dataset="synthetic"
+model="net"
+data_type="2cluster"
+n_rounds=50
+dataset="breast"
 n_clients=3
 pers=1
 
