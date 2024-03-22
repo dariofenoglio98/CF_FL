@@ -200,7 +200,7 @@ def main() -> None:
         # visualize the results
         utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset, config=config)
         # Evaluate distance with all training sets
-        utils.evaluate_distance(n_clients=args.n_clients, data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model_fn=model, config=config)
+        utils.evaluate_distance(n_clients=args.n_clients, data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=True)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
@@ -210,7 +210,7 @@ def main() -> None:
     if args.pers == 1:
         start_time = time.time()
         # Personalization
-        print("\n\n\033[94mPersonalization\033[0m")
+        print("\n\n\n\n\033[94mPersonalization\033[0m")
         # Personalization
         utils.personalization(n_clients=args.n_clients, model_fn=model, data_type=args.data_type, dataset=args.dataset, config=config, best_model_round=best_loss_round)
 

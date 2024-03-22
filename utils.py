@@ -744,7 +744,7 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     # return len(intersection) / len(union) if len(union) else -1
     return len(intersection) / a.shape[0]
 
-def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None):
+def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -827,7 +827,7 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     y_prime = y_prime.cpu() 
 
     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
-    print(f"\n\033[1;32mEvaluation on Testing Set - Server\033[0m")
+    print(f"\n\033[1;91mEvaluation on General Testing Set - Server\033[0m")
     print(f"Counterfactual validity: {validity:.4f}")
 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
@@ -875,6 +875,14 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
         os.makedirs(config['history_folder'] + f"server_{data_type}/")
     # save to csv
     data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL.csv")
+
+    # single client evaluation
+    if spec_client_val:
+        for n in range(1, n_clients+1):
+            client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, 
+                                    client_id=n, n_clients=n_clients, model=model, data_type=data_type, config=config)
+
+
 
 
 
@@ -1211,6 +1219,7 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
     # function
     train_fn = trainings[config["model_name"]]
     evaluate_fn = evaluations[config["model_name"]]
+    model_name = config["model_name"]
     
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
@@ -1256,7 +1265,10 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
 
     # local training and evaluation
     for c in range(n_clients):
-        print(f"\n\033[1;33mClient {c+1}\033[0m")
+        print(f"\n\n\033[1;33mClient {c+1}\033[0m")
+        # create folder 
+        if not os.path.exists(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}"):
+            os.makedirs(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}")
         # model and training parameters
         model_trained = copy.deepcopy(model_freezed)
         # model_trained = model_fn(config).to(device)
@@ -1278,7 +1290,6 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
                 "accuracy": [acc]
             })
             # save to csv
-            model_name = config["model_name"]
             data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
         else:
             mask = config['mask_evaluation']
@@ -1324,10 +1335,11 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             y_prime = y_prime.cpu() 
 
             validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+            print("\033[1;91m\nEvaluation on General Testing Set - Server\033[0m")
             print(f"Counterfactual validity client {c+1}: {validity:.4f}")
 
             # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
-            print(f"\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
+            print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
             mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
             print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
             mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
@@ -1344,7 +1356,7 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
             iou = intersection_over_union(x_prime_rescaled, X_train_rescaled_tot)
             var = variability(x_prime_rescaled, X_train_rescaled_tot)
-            print(f"\033[1;32mExtra metrics Evaluation - Counterfactual:Training Set\033[0m")
+            print(f"\033[1;32mExtra metrics Evaluation - Counterfactual: Training Set\033[0m")
             print('Hamming Distance: {:.2f}'.format(hamming_distance))
             print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
             print('Relative Distance: {:.2f}'.format(relative_distance))
@@ -1367,13 +1379,135 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
                 "var": [var]
             })
             # save to csv
-            model_name = config["model_name"]
-            # create folder 
-            if not os.path.exists(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}"):
-                os.makedirs(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}")
             data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
 
+            # client specific evaluation 
+            client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
 
+def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list,
+                               client_id=1, n_clients=3, model=None, data_type="random", config=None):
+    dataset = config["dataset"]
+    model_name = config["model_name"]
+    # check device
+    device = check_gpu(manual_seed=True, print_info=False)
+
+    # create folder
+    if not os.path.exists(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}"):
+        os.makedirs(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}")
+
+    # load data
+    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test_{client_id}.csv")
+    if dataset == "breast":
+        df_test = df_test.drop(columns=["Unnamed: 0"])
+    # Dataset split
+    X = df_test.drop('Labels', axis=1)
+    y = df_test['Labels']
+
+    # scale data
+    X_train = min_max_scaler(X_train_rescaled_tot.cpu().numpy(), dataset=dataset)
+    X_test = min_max_scaler(X.values, dataset=dataset)
+    X_test = torch.Tensor(X_test).float().to(device)
+    y_test = torch.LongTensor(y.values).to(device)
+
+    # evaluate
+    model.eval()
+    if model.__class__.__name__ == "Predictor":
+        with torch.no_grad():
+            y = model(X_test)
+            acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
+        print(f"Predictor Accuracy: {acc}")
+        data = pd.DataFrame({
+            "accuracy": [acc]
+        })
+        # save to csv
+        data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation.csv")
+    else:
+        mask = config['mask_evaluation']
+        with torch.no_grad():
+            if model.__class__.__name__ == "Net":
+                #H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
+                # run test_repetitions times and take the mean
+                H2_test_list, x_prime_list, y_prime_list = [], [], []
+                for _ in range(test_repetitions):
+                    H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+                    H2_test_list.append(H2_test)
+                    x_prime_list.append(x_prime)
+                    y_prime_list.append(y_prime)
+                H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+                x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+                y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+            elif model.__class__.__name__ == "ConceptVCNet":
+                # run test_repetitions times and take the mean
+                H2_test_list, x_prime_list, y_prime_list = [], [], []
+                for _ in range(test_repetitions):
+                    H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
+                    x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
+                    H2_test_list.append(H2_test)
+                    y_prime_list.append(y_prime)
+                H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+                x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+                y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+
+        x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
+        X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
+        if config["output_round"]:
+            x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
+            X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+        else:
+            x_prime_rescaled = torch.Tensor(x_prime_rescaled)
+            X_test_rescaled = torch.Tensor(X_test_rescaled)
+        
+        # pass to cpus
+        x_prime =  x_prime.cpu()
+        H2_test = H2_test.cpu()
+        y_prime = y_prime.cpu() 
+
+        validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+        print(f"\033[1;91mEvaluation on Client {client_id} Testing Set:\033[0m")
+        print(f"Counterfactual validity: {validity:.4f}")
+
+        # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
+        print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
+        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
+        print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
+        mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
+        for i in range(n_clients):
+            mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
+            print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
+            mean_distance_list.append(mean_distance_n)
+            hamming_prox_list.append(hamming_proxn)
+            relative_prox_list.append(relative_proxn)
+
+        # distance counterfactual
+        hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
+        euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
+        relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
+        iou = intersection_over_union(x_prime_rescaled, X_train_rescaled_tot)
+        var = variability(x_prime_rescaled, X_train_rescaled_tot)
+        print(f"\033[1;32mExtra metrics Evaluation - Counterfactual: Training Set\033[0m")
+        print('Hamming Distance: {:.2f}'.format(hamming_distance))
+        print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
+        print('Relative Distance: {:.2f}'.format(relative_distance))
+        print('Intersection over Union: {:.2f}'.format(iou))
+        print('Variability: {:.2f}'.format(var))
+        
+        # save metrics csv file
+        data = pd.DataFrame({
+            "validity": [validity],
+            "mean_distance": [mean_distance],
+            "hamming_prox": [hamming_prox],
+            "relative_prox": [relative_prox],
+            "mean_distance_one_trainset": [mean_distance_list],
+            "hamming_prox_one_trainset": [hamming_prox_list],
+            "relative_prox_one_trainset": [relative_prox_list],
+            "hamming_distance": [hamming_distance],
+            "euclidean_distance": [euclidean_distance],
+            "relative_distance": [relative_distance],
+            "iou": [iou],
+            "var": [var]
+        })
+        # save to csv
+        data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation.csv")
 
 
 # Dictionary of models
