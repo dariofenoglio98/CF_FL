@@ -94,6 +94,10 @@ def main()->None:
         else:
             H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
                                                     best_model_round=None, model=model_network, model_path=model_path, config=config)
+            
+            if x_prime_rescaled.shape[-1] == 2:
+                utils.plot_cf(x_prime_rescaled, H2_test, client_id, config, data_type=args.data_type, centralised='_centralized', show=False)
+
             # visualize the results
             utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset, config=config)
             # Evaluate distance with all training sets

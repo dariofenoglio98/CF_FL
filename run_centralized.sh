@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Choose the dataset
-dataset="breast"  # breast or diabetes
-n_clients=3
+dataset="synthetic"  # breast or diabetes
+n_clients=11
 
 # Array of data types
-declare -a data_types=("random" "cluster" "2cluster")
+declare -a data_types=("random")
 
 # Array of models
-declare -a models=("net" "vcnet" "predictor")
+declare -a models=("net")
 
 # Loop over each data type
 for data_type in "${data_types[@]}"; do
@@ -18,7 +18,7 @@ for data_type in "${data_types[@]}"; do
         if [ "$model" = "predictor" ]; then
             n_epochs=100
         else
-            n_epochs=100
+            n_epochs=200
         fi
         
         # Run the Python script with the current combination of parameters

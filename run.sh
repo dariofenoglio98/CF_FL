@@ -25,10 +25,10 @@
 # fi
 
 model="net"
-data_type="2cluster"
-n_rounds=50
-dataset="breast"
-n_clients=3
+data_type="random"
+n_rounds=200
+dataset="synthetic"
+n_clients=11
 pers=1
 
 echo "Starting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset"
