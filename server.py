@@ -155,9 +155,9 @@ def main() -> None:
     # Define strategy
     strategy = SaveModelStrategy(
         model=model(config=config), # model to be trained
-        min_fit_clients=3, # Never sample less than 10 clients for training
-        min_evaluate_clients=3,  # Never sample less than 5 clients for evaluation
-        min_available_clients=3, # Wait until all 10 clients are available
+        min_fit_clients=args.n_clients, # Never sample less than 10 clients for training
+        min_evaluate_clients=args.n_clients,  # Never sample less than 5 clients for evaluation
+        min_available_clients=args.n_clients, # Wait until all 10 clients are available
         fraction_fit=1.0, # Sample 100 % of available clients for training
         fraction_evaluate=1.0, # Sample 100 % of available clients for evaluation
         evaluate_metrics_aggregation_fn=weighted_average,
@@ -197,6 +197,9 @@ def main() -> None:
     else:
         H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
                                                 best_model_round=best_loss_round, model=model, config=config)
+        
+        if x_prime_rescaled.shape[-1] == 2:
+            utils.plot_cf(x_prime_rescaled, H2_test, 'server', config, data_type=args.data_type, show=False)
         # visualize the results
         utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset, config=config)
         # Evaluate distance with all training sets

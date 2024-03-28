@@ -2,11 +2,11 @@
 
 # SET FIXED VARIABLES
 n_clients=3
-dataset="diabetes" # breast or diabetes
+dataset="breast" # breast or diabetes
 
 # ARRAY OF DATA TYPES AND MODELS
 declare -a data_types=("random" "cluster" "2cluster")
-declare -a models=("vcnet" "net" "predictor")
+declare -a models=("net" "vcnet" "predictor")
 echo "Starting federated learning tests on $dataset dataset"
 
 #source .venv/bin/activate
@@ -18,9 +18,9 @@ for data_type in "${data_types[@]}"; do
     # Iterate over each model
     for model in "${models[@]}"; do
         if [ "$model" = "predictor" ]; then
-            n_rounds=200
+            n_rounds=300
         else
-            n_rounds=100
+            n_rounds=300
         fi
 
         echo -e "\n\n\n\nTesting for data_type: $data_type, model: $model"

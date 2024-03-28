@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 import os
 import csv
 import numpy as np
-from sklearn.decomposition import KernelPCA
+from sklearn.decomposition import PCA
 import copy
 
 
@@ -672,7 +672,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config):
         common_changes = torch.cat(common_changes, dim=0)
 
         # pca reduction
-        pca = KernelPCA(n_components=2, random_state=42, kernel='cosine')
+        pca = PCA(n_components=2, random_state=42)
         # generate random points around 0 with std 0.1 (errors shape)
         torch.manual_seed(42)
         rand_points = torch.normal(mean=0, std=0.1, size=(errors.shape))
@@ -1299,7 +1299,7 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
                     # run test_repetitions times and take the mean
                     H2_test_list, x_prime_list, y_prime_list = [], [], []
                     for _ in range(test_repetitions):
-                        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+                        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
                         H2_test_list.append(H2_test)
                         x_prime_list.append(x_prime)
                         y_prime_list.append(y_prime)
@@ -1310,7 +1310,7 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
                     # run test_repetitions times and take the mean
                     H2_test_list, x_prime_list, y_prime_list = [], [], []
                     for _ in range(test_repetitions):
-                        H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
+                        H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
                         x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
                         H2_test_list.append(H2_test)
                         y_prime_list.append(y_prime)
@@ -1335,6 +1335,8 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             y_prime = y_prime.cpu() 
 
             validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+            if x_prime_rescaled.shape[-1] == 2:
+                plot_cf(x_prime_rescaled, H2_test, c+1, config, data_type=data_type, show=False)
             print("\033[1;91m\nEvaluation on General Testing Set - Server\033[0m")
             print(f"Counterfactual validity client {c+1}: {validity:.4f}")
 
@@ -1509,6 +1511,28 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
         # save to csv
         data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation.csv")
 
+def plot_cf(x, y, client, config, data_type, centralised='', show=True):
+    if client == 'server':
+        folder = config['image_folder'] + f"server_side_{data_type}/"
+    else:
+        folder = config['image_folder'] + f"client{centralised}_{data_type}_{client}/"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+    plt.clf() 
+    y = y.argmax(dim=-1).detach().cpu().numpy()
+    plt.scatter(x[:, 0], x[:, 1], c=y, cmap='viridis')
+    # plt line to separate classes with the equation y = -0.72654253x
+    x_line = np.linspace(-5, 5, 100)
+    y_line = -0.72654253 * x_line
+    plt.plot(x_line, y_line, color='red')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.xlim(-5, 5)
+    plt.ylim(-5, 5)
+    plt.title('Generated Counterfactuals')
+    plt.savefig(folder + f"counterfactual.png")
+    if show:
+        plt.show()
 
 # Dictionary of models
 models = {
@@ -1539,7 +1563,7 @@ plot_functions = {
 }
 
 # general parameters
-test_repetitions = 1
+test_repetitions = 10
 
 # Dictionary of model parameters
 config_tests = {
@@ -1705,10 +1729,10 @@ config_tests = {
             "lambda1": 3,
             "lambda2": 12,
             "lambda3": 3,
-            "lambda4": 1.5,
+            "lambda4": 20,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 20,
+            "n_epochs_personalization": 70,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
