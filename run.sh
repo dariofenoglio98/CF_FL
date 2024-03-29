@@ -24,9 +24,9 @@
 #     exit 1
 # fi
 
-model="net"
+model="predictor"
 data_type="random"
-n_rounds=200
+n_rounds=100
 dataset="synthetic"
 n_clients=11
 pers=1

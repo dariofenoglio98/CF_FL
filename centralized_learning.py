@@ -41,6 +41,13 @@ def main()->None:
         default=3,
         help="Specifies the number of clients to be used for training and evaluation",
     )
+    parser.add_argument(
+        "--glob_pred",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="Specifies if global predictor is used (1) or not (0)",
+    )
     args = parser.parse_args()
 
     # print model
@@ -66,6 +73,13 @@ def main()->None:
         # Model
         model = model_network(config=config).to(device)
 
+        # if model is predictor, set global predictor
+        if args.glob_pred and args.model != 'predictor':
+            utils.update_and_freeze_predictor_weights(model, dataset=args.dataset, data_type=args.data_type)
+            add_name = '_glob_pred'
+        else:
+            add_name = ''
+
         # Optimizer and Loss function
         optimizer = torch.optim.SGD(model.parameters(), lr=config["learning_rate"], momentum=0.9)
 
@@ -80,11 +94,11 @@ def main()->None:
         # Save model
         if not os.path.exists(config['checkpoint_folder'] + f"{args.data_type}"):
             os.makedirs(config['checkpoint_folder'] + f"{args.data_type}")
-        model_path = config['checkpoint_folder'] + f"{args.data_type}/centralized_client_{client_id}.pth"
+        model_path = config['checkpoint_folder'] + f"{args.data_type}/centralized_client_{client_id}{add_name}.pth"
         torch.save(model.state_dict(), model_path)
 
         # Plot loss and accuracy using the previous lists
-        utils.plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type=args.data_type, client_id=client_id, image_folder=config['image_folder'], show=False)
+        utils.plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type=args.data_type, client_id=client_id, image_folder=config['image_folder'], show=False, name_fig=add_name)
 
         # Evaluate the model on the test set
         if args.model == 'predictor': # adjust this code
@@ -92,16 +106,10 @@ def main()->None:
                                                             dataset=args.dataset, best_model_round=None, model_path=model_path)
             print(f"Accuracy on test set: {accuracy}")
         else:
-            H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
-                                                    best_model_round=None, model=model_network, model_path=model_path, config=config)
+            utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,best_model_round=None, model=model_network, model_path=model_path, config=config)
             
-            if x_prime_rescaled.shape[-1] == 2:
-                utils.plot_cf(x_prime_rescaled, H2_test, client_id, config, data_type=args.data_type, centralised='_centralized', show=False)
-
-            # visualize the results
-            utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset, config=config)
             # Evaluate distance with all training sets
-            utils.evaluate_distance(data_type=args.data_type, dataset=args.dataset, best_model_round=None, model_fn=model_network, model_path=model_path, config=config)
+            utils.evaluate_distance(n_clients=args.n_clients, data_type=args.data_type, dataset=args.dataset, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=True, client_id=client_id, centralized=True, add_name=add_name)
 
 
 

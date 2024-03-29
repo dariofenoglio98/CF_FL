@@ -195,19 +195,14 @@ def main() -> None:
         y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, config=config)
         print(f"Accuracy on test set: {accuracy}")
     else:
-        H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled = utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,
-                                                best_model_round=best_loss_round, model=model, config=config)
+        utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model=model, config=config)
         
-        if x_prime_rescaled.shape[-1] == 2:
-            utils.plot_cf(x_prime_rescaled, H2_test, 'server', config, data_type=args.data_type, show=False)
-        # visualize the results
-        utils.visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, args.data_type, args.dataset, config=config)
         # Evaluate distance with all training sets
         utils.evaluate_distance(n_clients=args.n_clients, data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=True)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
-    time.sleep(2)
+    time.sleep(1)
     
     # personalization (now done on the server but can be uqually done on the client side) 
     if args.pers == 1:

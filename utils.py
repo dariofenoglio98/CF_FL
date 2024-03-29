@@ -12,6 +12,26 @@ from sklearn.decomposition import PCA
 import copy
 
 
+def update_and_freeze_predictor_weights(model, dataset="synthetic", data_type="random"):
+    # load predictor weights
+    predictor_weights = torch.load(f"checkpoints/{dataset}/predictor/{data_type}/model_best.pth")
+    
+    # Load the weights into the model
+    model_state_dict = model.state_dict()
+
+    # Iterate over the predictor weights and update the model state_dict accordingly
+    for name, param in predictor_weights.items():
+        if name in model_state_dict:
+            print(f"Updating weights for: {name}")
+            model_state_dict[name].copy_(param)
+        else:
+            print(f"Weight {name} not found in the model, skipping.")
+
+    # Optional: Freeze the loaded weights 
+    for name, param in model.named_parameters():
+        if name in predictor_weights:
+            param.requires_grad = False  # Freezing the weights
+            print(f"Freezing weights for: {name}")
 
 def min_max_scaler(X, dataset="diabetes", feature_range=(0, 1)):
     X_min = config_tests[dataset]['min']
@@ -577,7 +597,9 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
         X_test_rescaled = np.round(X_test_rescaled)
         x_prime_rescaled = np.round(x_prime_rescaled)
         
-    return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
+    # visualize
+    visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type, dataset, config=config)
+    # return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
 def evaluation_central_test_predictor(data_type="random", dataset="diabetes", best_model_round=1, model_path=None, config=None):    
     # check device
@@ -604,6 +626,8 @@ def evaluation_central_test_predictor(data_type="random", dataset="diabetes", be
         model.load_state_dict(torch.load(model_path))
     else:
         model.load_state_dict(torch.load(f"checkpoints/{dataset}/predictor/{data_type}/model_round_{best_model_round}.pth"))
+    # save model with 'best' name
+    torch.save(model.state_dict(), f"checkpoints/{dataset}/predictor/{data_type}/model_best.pth")
     # evaluate
     model.eval()
     with torch.no_grad():
@@ -744,7 +768,7 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     # return len(intersection) / len(union) if len(union) else -1
     return len(intersection) / a.shape[0]
 
-def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False):
+def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name=''):
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -826,6 +850,10 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     H2_test = H2_test.cpu()
     y_prime = y_prime.cpu() 
 
+    # plot counterfactuals
+    if x_prime_rescaled.shape[-1] == 2:
+        plot_cf(x_prime_rescaled, H2_test, client_id=client_id, config=config, centralised=centralized, data_type=data_type, show=False, add_name=add_name)
+
     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
     print(f"\n\033[1;91mEvaluation on General Testing Set - Server\033[0m")
     print(f"Counterfactual validity: {validity:.4f}")
@@ -874,7 +902,7 @@ def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_
     if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
         os.makedirs(config['history_folder'] + f"server_{data_type}/")
     # save to csv
-    data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL.csv")
+    data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
 
     # single client evaluation
     if spec_client_val:
@@ -1089,7 +1117,7 @@ def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None
         writer.writerow([round_num, loss, accuracy, validity, proximity, hamming_distance, euclidean_distance, iou, var])
 
 # plot and save plot on client side
-def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", client_id=1, image_folder="images/", show=True):
+def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", client_id=1, image_folder="images/", show=True, name_fig=''):
     # Create a folder for the client
     folder = image_folder + f"client_centralized_{data_type}_{client_id}"
     if not os.path.exists(folder):
@@ -1116,7 +1144,7 @@ def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", cl
     plt.ylabel('Metrics')
     plt.title(f'Client {client_id} Metrics (Validation Set)')
     plt.legend()
-    plt.savefig(folder + f"/validation_metrics.png")
+    plt.savefig(folder + f"/validation_metrics{name_fig}.png")
     if show:
         plt.show()
 
@@ -1334,9 +1362,11 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             H2_test = H2_test.cpu()
             y_prime = y_prime.cpu() 
 
-            validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+            # plot counterfactuals
             if x_prime_rescaled.shape[-1] == 2:
-                plot_cf(x_prime_rescaled, H2_test, c+1, config, data_type=data_type, show=False)
+                plot_cf(x_prime_rescaled, H2_test, client_id=c+1, config=config, data_type=data_type, show=False)
+
+            validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
             print("\033[1;91m\nEvaluation on General Testing Set - Server\033[0m")
             print(f"Counterfactual validity client {c+1}: {validity:.4f}")
 
@@ -1387,7 +1417,7 @@ def personalization(n_clients=3, model_fn=None, data_type="random", dataset="dia
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
 
 def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list,
-                               client_id=1, n_clients=3, model=None, data_type="random", config=None):
+                               client_id=1, n_clients=3, model=None, data_type="random", config=None, add_name=""):
     dataset = config["dataset"]
     model_name = config["model_name"]
     # check device
@@ -1422,7 +1452,7 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
             "accuracy": [acc]
         })
         # save to csv
-        data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation.csv")
+        data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.csv")
     else:
         mask = config['mask_evaluation']
         with torch.no_grad():
@@ -1509,13 +1539,17 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
             "var": [var]
         })
         # save to csv
-        data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation.csv")
+        data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.csv")
 
-def plot_cf(x, y, client, config, data_type, centralised='', show=True):
-    if client == 'server':
+def plot_cf(x, y, client_id, config, data_type, centralised=False, show=True, add_name=""):
+    centralised = "centralized" if centralised else ""
+    if client_id == None:
         folder = config['image_folder'] + f"server_side_{data_type}/"
     else:
-        folder = config['image_folder'] + f"client{centralised}_{data_type}_{client}/"
+        if centralised:
+            folder = config['image_folder'] + f"client_{centralised}_{data_type}_{client_id}/"
+        else:
+            folder = config['image_folder'] + f"client_{data_type}_{client_id}/"
     if not os.path.exists(folder):
         os.makedirs(folder)
     plt.clf() 
@@ -1530,7 +1564,7 @@ def plot_cf(x, y, client, config, data_type, centralised='', show=True):
     plt.xlim(-5, 5)
     plt.ylim(-5, 5)
     plt.title('Generated Counterfactuals')
-    plt.savefig(folder + f"counterfactual.png")
+    plt.savefig(folder + f"counterfactual{add_name}.png")
     if show:
         plt.show()
 

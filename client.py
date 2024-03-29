@@ -66,7 +66,7 @@ def main()->None:
     parser.add_argument(
         "--id",
         type=int,
-        choices=range(1, 10),
+        choices=range(1, 20),
         required=True,
         help="Specifies the artificial data partition",
     )
