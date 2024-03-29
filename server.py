@@ -29,9 +29,10 @@ def fit_config(server_round: int):
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     # Multiply accuracy of each client by number of examples used
     accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
+    validities = [num_examples * m["validity"] for num_examples, m in metrics]
     examples = [num_examples for num_examples, _ in metrics]
     # Aggregate and return custom metric (weighted average)
-    return {"accuracy": sum(accuracies) / sum(examples)}
+    return {"accuracy": sum(accuracies) / sum(examples), "validity": sum(validities) / sum(examples)}
 
 # Custom strategy to save model after each round
 class SaveModelStrategy(fl.server.strategy.FedAvg):
@@ -83,8 +84,8 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             params = fl.common.parameters_to_ndarrays(fit_res.parameters)
             params_dict = zip(self.model.state_dict().keys(), params)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            cid = int(state_dict['cid'].item())
-            print(f"Server-side evaluation of client {cid}")
+            cid = int(np.round(state_dict['cid'].item()))
+            # print(f"Server-side evaluation of client {cid}")
             # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
             self.model.load_state_dict(state_dict, strict=True)
             # Evaluate the model
@@ -145,6 +146,12 @@ def main() -> None:
         default=3,
         help="Specifies the number of clients to be used for training and evaluation",
     )
+    parser.add_argument(
+        "--n_attackers",
+        type=int,
+        default=0,
+        help="Specifies the number of attackers in the training set - not considered for client-evaluation",
+    )
     args = parser.parse_args()
 
     # Start time
@@ -180,6 +187,7 @@ def main() -> None:
     # convert history to list
     loss = [k[1] for k in history.losses_distributed]
     accuracy = [k[1] for k in history.metrics_distributed['accuracy']]
+    validity = [k[1] for k in history.metrics_distributed['validity']]
 
     # Save loss and accuracy to a file
     print(f"Saving metrics to as .json in histories folder...")
@@ -190,17 +198,19 @@ def main() -> None:
         json.dump({'loss': loss, 'accuracy': accuracy}, f)
  
     # Plot
-    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False)
+    #best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False)
 
     # Evaluate the model on the test set
     if args.model == 'predictor':
+        best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False)
         y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, config=config)
         print(f"Accuracy on test set: {accuracy}")
     else:
+        best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False, validity=validity)
         utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model=model, config=config)
         
         # Evaluate distance with all training sets
-        utils.evaluate_distance(n_clients=args.n_clients, data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=True)
+        utils.evaluate_distance(n_clients=args.n_clients-args.n_attackers, data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=True)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
