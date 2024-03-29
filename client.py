@@ -27,6 +27,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.config = config
 
     def get_parameters(self, config):
+        self.model.set_client_id(self.client_id)
         return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
 
     def set_parameters(self, parameters):

@@ -103,6 +103,7 @@ class Net(nn.Module,):
         self.binary_feature = config['binary_feature']
         self.dataset = config['dataset']
         self.round = config['output_round']
+        self.cid = nn.Parameter(torch.tensor([1]), requires_grad=False)
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -111,6 +112,10 @@ class Net(nn.Module,):
     def get_mask(self, x):
         mask = torch.rand(x.shape).to(x.device)
         return mask
+    
+    def set_client_id(self, client_id):
+        """Update the cid parameter to the specified client_id."""
+        self.cid.data = torch.tensor([client_id], dtype=torch.float32, requires_grad=False)
                 
     def forward(self, x, include=True, mask_init=None):
         # standard forward pass (predictor)
@@ -227,10 +232,15 @@ class ConceptVCNet(nn.Module,):
         self.mask = config['mask']
         self.binary_feature = config['binary_feature']
         self.dataset = config['dataset']
+        self.cid = nn.Parameter(torch.tensor([1]), requires_grad=False)
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight.data)
+    
+    def set_client_id(self, client_id):
+        """Update the cid parameter to the specified client_id."""
+        self.cid.data = torch.tensor([client_id], dtype=torch.float32, requires_grad=False)
 
     def forward(self, x, mask_init=None, include=True):
         # standard forward pass (predictor)
@@ -1218,6 +1228,11 @@ class Predictor(nn.Module):
         self.fc4 = nn.Linear(256, 64)
         self.fc5 = nn.Linear(64, config["output_dim"])
         self.relu = nn.ReLU()
+        self.cid = config["client_id"]
+
+    def set_client_id(self, client_id):
+        """Update the cid parameter to the specified client_id."""
+        self.cid.data = torch.tensor([client_id], dtype=torch.float32, requires_grad=False)
 
     def forward(self, x):
         out = self.fc1(x)

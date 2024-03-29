@@ -24,16 +24,16 @@
 #     exit 1
 # fi
 
-model="predictor"
+model="net"
 data_type="random"
-n_rounds=100
+n_rounds=10
 dataset="synthetic"
 n_clients=11
 pers=1
 
 echo "Starting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset"
 python server.py --rounds $n_rounds --data_type $data_type --model $model --dataset $dataset --pers $pers --n_clients $n_clients  &
-sleep 3  # Sleep for 3s to give the server enough time to start
+sleep 2  # Sleep for 2s to give the server enough time to start
  
 for i in $(seq 1 $n_clients); do
     echo "Starting client $i"

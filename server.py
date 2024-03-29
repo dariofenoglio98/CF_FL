@@ -79,15 +79,17 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         # for each clients evaluate the model
         client_data = {}
         for client, fit_res in results:
-            print(f"Server-side evaluation of client {client.cid}")
             # Load model
             params = fl.common.parameters_to_ndarrays(fit_res.parameters)
             params_dict = zip(self.model.state_dict().keys(), params)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            cid = int(state_dict['cid'].item())
+            print(f"Server-side evaluation of client {cid}")
+            # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
             self.model.load_state_dict(state_dict, strict=True)
             # Evaluate the model
             client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
-            client_data[client.cid] = client_metrics
+            client_data[cid] = client_metrics
         
         # Aggregate metrics
         utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config)
