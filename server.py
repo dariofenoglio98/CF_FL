@@ -101,8 +101,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
 
 
-
-
 # Main
 def main() -> None:
     parser = argparse.ArgumentParser(description="Flower")
@@ -152,6 +150,13 @@ def main() -> None:
         default=0,
         help="Specifies the number of attackers in the training set - not considered for client-evaluation",
     )
+    parser.add_argument(
+        "--attack_type",
+        type=str,
+        default='',
+        choices=["", 'MP_random', "MP_noise", "DP_flip", "DP_random"],
+        help="Specifies the attack type to be used",
+    )
     args = parser.parse_args()
 
     # Start time
@@ -198,19 +203,17 @@ def main() -> None:
         json.dump({'loss': loss, 'accuracy': accuracy}, f)
  
     # Plot
-    #best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False)
+    best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(args, loss, accuracy, validity, config=config, show=False)
 
     # Evaluate the model on the test set
     if args.model == 'predictor':
-        best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False)
-        y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, config=config)
+        y_test_pred, accuracy = utils.evaluation_central_test_predictor(args, best_model_round=best_loss_round, config=config)
         print(f"Accuracy on test set: {accuracy}")
     else:
-        best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(loss, accuracy, args.rounds, args.data_type, config=config, show=False, validity=validity)
-        utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model=model, config=config)
+        utils.evaluation_central_test(args, best_model_round=best_loss_round, model=model, config=config)
         
         # Evaluate distance with all training sets
-        utils.evaluate_distance(n_clients=args.n_clients-args.n_attackers, data_type=args.data_type, dataset=args.dataset, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=True)
+        utils.evaluate_distance(args, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=True)
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
@@ -222,11 +225,10 @@ def main() -> None:
         # Personalization
         print("\n\n\n\n\033[94mPersonalization\033[0m")
         # Personalization
-        utils.personalization(n_clients=args.n_clients, model_fn=model, data_type=args.data_type, dataset=args.dataset, config=config, best_model_round=best_loss_round)
+        utils.personalization(args, model_fn=model, config=config, best_model_round=best_loss_round)
 
         # Print training time in minutes (grey color)
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
-
 
 if __name__ == "__main__":
     main()

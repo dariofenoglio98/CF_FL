@@ -102,14 +102,13 @@ def main()->None:
 
         # Evaluate the model on the test set
         if args.model == 'predictor': # adjust this code
-            y_test_pred, accuracy = utils.evaluation_central_test_predictor(data_type=args.data_type,
-                                                            dataset=args.dataset, best_model_round=None, model_path=model_path)
+            y_test_pred, accuracy = utils.evaluation_central_test_predictor(args, best_model_round=None, model_path=model_path)
             print(f"Accuracy on test set: {accuracy}")
         else:
-            utils.evaluation_central_test(data_type=args.data_type, dataset=args.dataset,best_model_round=None, model=model_network, model_path=model_path, config=config)
+            utils.evaluation_central_test(args, best_model_round=None, model=model_network, model_path=model_path, config=config)
             
             # Evaluate distance with all training sets
-            utils.evaluate_distance(n_clients=args.n_clients, data_type=args.data_type, dataset=args.dataset, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=True, client_id=client_id, centralized=True, add_name=add_name)
+            utils.evaluate_distance(args, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=True, client_id=client_id, centralized=True, add_name=add_name)
 
 
 

@@ -131,7 +131,7 @@ def main()->None:
     config = utils.config_tests[args.dataset][args.model]
 
     # check if metrics.csv exists otherwise delete it
-    utils.check_and_delete_metrics_file(config['history_folder'] + f"malicious_client_{args.attack_type}_{args.data_type}_{args.id}", question=False)
+    utils.check_and_delete_metrics_file(config['history_folder'] + f"malicious_client_{args.data_type}_{args.attack_type}_{args.id}", question=False)
 
     # check gpu and set manual seed
     device = utils.check_gpu(manual_seed=True)

@@ -600,7 +600,11 @@ def load_data_test(data_type="random", dataset="diabetes"):
         y_test = torch.LongTensor(y.values).to(device)
         return X_test, y_test
 
-def evaluation_central_test(data_type="random", dataset="diabetes", best_model_round=1, model=None, model_path=None, config=None):
+def evaluation_central_test(args, best_model_round=1, model=None, model_path=None, config=None):
+    # read arguments
+    data_type=args.data_type
+    dataset=args.dataset
+
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
     
@@ -641,7 +645,11 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
     visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type, dataset, config=config)
     # return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
-def evaluation_central_test_predictor(data_type="random", dataset="diabetes", best_model_round=1, model_path=None, config=None):    
+def evaluation_central_test_predictor(args, best_model_round=1, model_path=None, config=None): 
+    # read arguments
+    data_type=args.data_type
+    dataset=args.dataset   
+
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
     
@@ -808,7 +816,15 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     # return len(intersection) / len(union) if len(union) else -1
     return len(intersection) / a.shape[0]
 
-def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name=''):
+def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name=''):
+    # read arguments
+    if centralized:
+        n_clients=args.n_clients
+    else:
+        n_clients=args.n_clients-args.n_attackers
+    data_type=args.data_type
+    dataset=args.dataset
+    
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -1017,16 +1033,31 @@ def check_gpu(manual_seed=True, print_info=True):
     return device
 
 # plot and save plot on server side
-def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", config=None, show=True, validity=None):
+def plot_loss_and_accuracy(args, loss, accuracy, validity, config=None, show=True):
+    # read args
+    rounds = args.rounds
+    data_type = args.data_type 
+    attack_type = args.attack_type 
+    n_attackers=args.n_attackers
+
+    # Create a folder for the server
     folder = config['image_folder'] + f"/server_side_{data_type}/"
-    # check if folder exists
     if not os.path.exists(folder):
         os.makedirs(folder)
     
     # Plot loss and accuracy
     plt.figure(figsize=(12, 6))
 
-    if validity != None:
+    # check if validity is all zeros
+    if all(v == 0 for v in validity):
+        plt.plot(loss, label='Loss')
+        plt.plot(accuracy, label='Accuracy')
+        min_loss_index = loss.index(min(loss))
+        max_accuracy_index = accuracy.index(max(accuracy))
+        print(f"\n\033[1;34mServer Side\033[0m \nMinimum Loss occurred at round {min_loss_index + 1} with a loss value of {loss[min_loss_index]} \nMaximum Accuracy occurred at round {max_accuracy_index + 1} with an accuracy value of {accuracy[max_accuracy_index]}\n")
+        plt.scatter(min_loss_index, loss[min_loss_index], color='blue', marker='*', s=100, label='Min Loss')
+        plt.scatter(max_accuracy_index, accuracy[max_accuracy_index], color='orange', marker='*', s=100, label='Max Accuracy')
+    else:
         plt.plot(loss, label='Loss')
         plt.plot(accuracy, label='Accuracy')
         plt.plot(validity, label='Validity')
@@ -1037,21 +1068,16 @@ def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", config=No
         plt.scatter(min_loss_index, loss[min_loss_index], color='blue', marker='*', s=100, label='Min Loss')
         plt.scatter(max_accuracy_index, accuracy[max_accuracy_index], color='orange', marker='*', s=100, label='Max Accuracy')
         plt.scatter(max_validity_index, validity[max_validity_index], color='green', marker='*', s=100, label='Max Validity')
-    else:
-        plt.plot(loss, label='Loss')
-        plt.plot(accuracy, label='Accuracy')
-        min_loss_index = loss.index(min(loss))
-        max_accuracy_index = accuracy.index(max(accuracy))
-        print(f"\n\033[1;34mServer Side\033[0m \nMinimum Loss occurred at round {min_loss_index + 1} with a loss value of {loss[min_loss_index]} \nMaximum Accuracy occurred at round {max_accuracy_index + 1} with an accuracy value of {accuracy[max_accuracy_index]}\n")
-        plt.scatter(min_loss_index, loss[min_loss_index], color='blue', marker='*', s=100, label='Min Loss')
-        plt.scatter(max_accuracy_index, accuracy[max_accuracy_index], color='orange', marker='*', s=100, label='Max Accuracy')
     
     # Labels and title
     plt.xlabel('Epoch')
     plt.ylabel('Metrics')
     plt.title('Distributed Metrics (Weighted Average on Validation Set)')
     plt.legend()
-    plt.savefig(folder + f"training_{rounds}_rounds.png")
+    if n_attackers > 0:
+        plt.savefig(folder + f"training_{attack_type}_{rounds}_rounds_{n_attackers}_attackers.png")
+    else:
+        plt.savefig(folder + f"training_{rounds}_rounds.png")
     if show:
         plt.show()
     return min_loss_index+1, max_accuracy_index+1
@@ -1279,7 +1305,7 @@ class Predictor(nn.Module):
         self.fc4 = nn.Linear(256, 64)
         self.fc5 = nn.Linear(64, config["output_dim"])
         self.relu = nn.ReLU()
-        self.cid = config["client_id"]
+        self.cid = nn.Parameter(torch.tensor([1]), requires_grad=False)
 
     def set_client_id(self, client_id):
         """Update the cid parameter to the specified client_id."""
@@ -1309,7 +1335,12 @@ def freeze_params(model, model_section):
             param.requires_grad = False
     return model
 
-def personalization(n_clients=3, model_fn=None, data_type="random", dataset="diabetes", config=None, best_model_round=None):
+def personalization(args, model_fn=None, config=None, best_model_round=None):
+    # read arguments
+    n_clients=args.n_clients 
+    data_type=args.data_type 
+    dataset=args.dataset
+    
     # function
     train_fn = trainings[config["model_name"]]
     evaluate_fn = evaluations[config["model_name"]]
