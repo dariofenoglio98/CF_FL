@@ -154,7 +154,7 @@ def main() -> None:
         "--attack_type",
         type=str,
         default='',
-        choices=["", 'MP_random', "MP_noise", "DP_flip", "DP_random"],
+        choices=["", 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"],
         help="Specifies the attack type to be used",
     )
     args = parser.parse_args()

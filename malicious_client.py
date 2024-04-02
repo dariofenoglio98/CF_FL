@@ -17,7 +17,8 @@ class FlowerClient(fl.client.NumPyClient):
         self.y_train = y_train
         self.X_val = X_val
         self.y_val = y_val
-        self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.loss_fn = InvertedLoss() if attack_type=="DP_inverted_loss" else torch.nn.CrossEntropyLoss()
+        print(f"\n\n\033[33mLoss function: {self.loss_fn}\033[0m")
         self.optimizer = optimizer
         self.num_examples = num_examples
         self.client_id = client_id 
@@ -27,6 +28,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.history_folder = config['history_folder']
         self.config = config
         self.attack_type = attack_type
+        self.saved_models = {} # Save the parameters of the previous rounds
 
     def get_parameters(self, config):
         params = []
@@ -38,7 +40,7 @@ class FlowerClient(fl.client.NumPyClient):
                 params.append(v.cpu().numpy())
                 continue
             # Original parameters
-            if self.attack_type in ["None", "DP_flip", "DP_random"]:
+            if self.attack_type in ["None", "DP_flip", "DP_random", "DP_inverted_loss"]:
                 params.append(v.cpu().numpy())
             # Mimic the actual parameter range by observing the mean and std of each parameter
             elif self.attack_type == "MP_random":
@@ -48,6 +50,18 @@ class FlowerClient(fl.client.NumPyClient):
             elif self.attack_type == "MP_noise":
                 v = v.cpu().numpy()
                 params.append(v + np.random.normal(0, 0.4*np.std(v), v.shape).astype(np.float32))
+            # Gradient-based attack - flip the sign of the gradient and scale it by a factor [adaptation of Fall of Empires]
+            elif self.attack_type == "MP_gradient":
+                if config["current_round"] == 1:
+                    params.append(v.cpu().numpy()) # Use the original parameters for the first round
+                    continue
+                else:
+                    epsilon = 0.01
+                    prev_v = self.saved_models.get(config["current_round"] - 1).get(k).cpu().numpy()
+                    current_v = v.cpu().numpy()
+                    #manipulated_param = current_v - epsilon * (current_v - prev_v)
+                    manipulated_param = prev_v
+                    params.append(manipulated_param.astype(np.float32))
 
         return params
     
@@ -58,10 +72,15 @@ class FlowerClient(fl.client.NumPyClient):
 
     def fit(self, parameters, config):
         self.set_parameters(parameters)
-        if self.attack_type in ["None", "DP_flip", "DP_random"]:
+        if self.attack_type in ["None", "DP_flip", "DP_random", "DP_inverted_loss"]:
             model_trained, train_loss, val_loss, acc, acc_prime, acc_val = self.train_fn(
                 self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
                 self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
+        elif self.attack_type == "MP_gradient":
+            self.saved_models[config["current_round"]] = {k: v.clone() for k, v in self.model.state_dict().items()}
+            # delede previous 3-rounds model
+            if config["current_round"] > 3:
+                del self.saved_models[config["current_round"]-3]
         return self.get_parameters(config), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
@@ -81,6 +100,30 @@ class FlowerClient(fl.client.NumPyClient):
             return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "proximity": float(mean_proximity), "validity": float(validity),
                                                             "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
                                                             "iou": float(iou), "variability": float(variability)}
+
+
+class InvertedLoss(torch.nn.Module):
+    def __init__(self):
+        """
+        Inverted loss module that inverts the output of a base loss function.
+        :param base_loss_fn: The base loss function (e.g., nn.CrossEntropyLoss) to be inverted.
+        """
+        super(InvertedLoss, self).__init__()
+        self.base_loss_fn = torch.nn.CrossEntropyLoss()
+
+    def forward(self, output, target):
+        """
+        Forward pass for calculating the inverted loss.
+        :param output: The model's predictions.
+        :param target: The actual labels.
+        :return: The inverted loss.
+        """
+        standard_loss = self.base_loss_fn(output, target)
+        # Ensuring the loss is not too small to avoid division by zero or extremely large inverted loss
+        standard_loss = torch.clamp(standard_loss, min=0.001)
+        inverted_loss = 1.0 / standard_loss
+
+        return inverted_loss
 
 
 # main
@@ -118,7 +161,7 @@ def main()->None:
         "--attack_type",
         type=str,
         default='MP_random',
-        choices=["None", 'MP_random', "MP_noise", "DP_flip", "DP_random"],
+        choices=["None", 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"],
         help="Specifies the attack type to be used",
     )
     args = parser.parse_args()
