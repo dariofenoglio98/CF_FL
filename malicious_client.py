@@ -18,7 +18,6 @@ class FlowerClient(fl.client.NumPyClient):
         self.X_val = X_val
         self.y_val = y_val
         self.loss_fn = InvertedLoss() if attack_type=="DP_inverted_loss" else torch.nn.CrossEntropyLoss()
-        print(f"\n\n\033[33mLoss function: {self.loss_fn}\033[0m")
         self.optimizer = optimizer
         self.num_examples = num_examples
         self.client_id = client_id 

@@ -754,7 +754,8 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config):
         pca = PCA(n_components=2, random_state=42)
         rand_points = torch.normal(mean=0, std=0.1, size=(common_changes.shape[1:]))
         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
-        common_changes_pca = common_changes.clone().cpu().detach().numpy()
+        #common_changes_pca = common_changes.clone().cpu().detach().numpy()
+        common_changes_pca = np.zeros((common_changes.shape[0], common_changes.shape[1], 2))
         for i, el in enumerate(common_changes):
             common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
         model_name = config["model_name"]
@@ -995,7 +996,7 @@ def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescal
        'area3', 'smoothness3', 'compactness3', 'concavity3', 'concave_points3',
        'symmetry3', 'fractal_dimension3'] 
     elif dataset == "synthetic":
-        features = ['x1', 'x2']
+        features = ['x1', 'x2','x3']
     else:
         # raise error: "Error: dataset not found in visualize_examples"
         raise ValueError("Error: dataset not found in visualize_examples")        
@@ -1858,12 +1859,12 @@ config_tests = {
             "checkpoint_folder": "checkpoints/synthetic/net/",
             "history_folder": "histories/synthetic/net/",
             "image_folder": "images/synthetic/net/",
-            "input_dim": 2,
+            "input_dim": 3,
             "output_dim": 2,
             "drop_prob": 0.3,
             "mask": torch.nn.Parameter(torch.Tensor([0,0]), requires_grad=False),
-            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0]).bool(), requires_grad=False),
-            "mask_evaluation": torch.Tensor([0,0]),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0,0]),
             "lambda1": 3,
             "lambda2": 12,
             "lambda3": 3,
@@ -1885,12 +1886,12 @@ config_tests = {
             "checkpoint_folder": "checkpoints/synthetic/vcnet/",
             "history_folder": "histories/synthetic/vcnet/",
             "image_folder": "images/synthetic/vcnet/",
-            "input_dim": 2,
+            "input_dim": 3,
             "output_dim": 2,
             "drop_prob": 0.3,
-            "mask": torch.nn.Parameter(torch.Tensor([0,0]), requires_grad=False),
-            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0]).bool(), requires_grad=False),
-            "mask_evaluation": torch.Tensor([0,0]),
+            "mask": torch.nn.Parameter(torch.Tensor([0,0,0]), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0,0]),
             "lambda1": 2,
             "lambda2": 10,
             "learning_rate": 0.01,
@@ -1908,7 +1909,7 @@ config_tests = {
             "checkpoint_folder": "checkpoints/synthetic/predictor/",
             "history_folder": "histories/synthetic/predictor/",
             "image_folder": "images/synthetic/predictor/",
-            "input_dim": 2,
+            "input_dim": 3,
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
@@ -1917,8 +1918,8 @@ config_tests = {
             "to_freeze": ["fc1", "fc2", "fc3"],
             "output_round": False,
         },
-        "min" : np.array([-5., -5.]),
-        "max" : np.array([5., 5.]),
+        "min" : np.array([-5., -5., -5]),
+        "max" : np.array([5., 5., 5.]),
         
     }
 }
