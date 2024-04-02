@@ -14,17 +14,18 @@ from sklearn.preprocessing import MinMaxScaler
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname("utils.py"), '..'))
+from utils import config_tests as config  
 import utils
 
 
 def load_data(client_id="1",device="cpu", type='random'):
     # load data
     #df_train = pd.read_csv('data/df_split_random2.csv')
-    df_train = pd.read_csv(f'../data/df_split_{type}_{client_id}.csv')
+    df_train = pd.read_csv(f'../data/df_diabetes_{type}_{client_id}.csv')
     df_train = df_train.astype(int)
     # Dataset split
-    X = df_train.drop('Diabetes_binary', axis=1)
-    y = df_train['Diabetes_binary']
+    X = df_train.drop('Labels', axis=1)
+    y = df_train['Labels']
     # Use 10 % of total data as Test set and the rest as (Train + Validation) set 
     X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.001) # use only 0.1% of the data as test set - i dont perform validation on client test set
     # Use 20 % of (Train + Validation) set as Validation set
@@ -41,8 +42,9 @@ def load_data(client_id="1",device="cpu", type='random'):
     return X_train, y_train, X_val, y_val, X_test, y_test, num_examples, scaler
 
 # Prepare model and data
-def prepare_model_and_data(categorical_features, client_id=1, data_type='random', best_epoch=1000, target_feature="Diabetes_binary"):
+def prepare_model_and_data(categorical_features, client_id=1, data_type='random', best_epoch=1000, target_feature="Labels"):
     # load data train 
+    conf = config["diabetes"]['predictor']
     if client_id == "server":
         X_train1, y_train1, _, _, _, _, _, _ = load_data(client_id=1,device="cpu", type=data_type)
         X_train2, y_train2, _, _, _, _, _, _ = load_data(client_id=2,device="cpu", type=data_type)
@@ -52,10 +54,10 @@ def prepare_model_and_data(categorical_features, client_id=1, data_type='random'
     else:
         X_train, y_train, _, _, _, _, _, scaler = load_data(client_id=client_id,device="cpu", type=data_type)
     # load data test
-    df_test = pd.read_csv(f"../data/df_test_{data_type}.csv").astype(int)
+    df_test = pd.read_csv(f"../data/df_diabetes_{data_type}_test.csv").astype(int)
     # Dataset split
-    X = df_test.drop('Diabetes_binary', axis=1).values
-    y_test = df_test['Diabetes_binary'].values.ravel()
+    X = df_test.drop('Labels', axis=1).values
+    y_test = df_test['Labels'].values.ravel()
 
     # scale data
     X_test = scaler.transform(X)
@@ -71,12 +73,12 @@ def prepare_model_and_data(categorical_features, client_id=1, data_type='random'
         pass
     # load model
     if client_id == "server":
-        model_filename = f"../checkpoints/predictor/{data_type}/model_round_{best_epoch}.pth"
+        model_filename = f"../checkpoints/diabetes/predictor/{data_type}/model_round_{best_epoch}.pth"
     else:
-        model_filename = f"../checkpoints/predictor/{data_type}/centralized_predictor_client_{client_id}.pth"
+        model_filename = f"../checkpoints/diabetes/predictor/{data_type}/centralized_client_{client_id}.pth"
     try:
         print("Checking if {} exists, loading...".format(model_filename))
-        model = utils.Predictor()
+        model = utils.Predictor(config=conf)
         model.load_state_dict(torch.load(model_filename))
         print("Loaded model")
     except FileNotFoundError:
@@ -101,7 +103,7 @@ def execute(model, X_train, y_train, X_test, y_test, feature_names, scaler, data
             model_name,
             run
         ))
-    counterfactuals, ranker, best_instance = baycon.run(initial_instance, initial_prediction, target, data_analyzer, model, scaler)
+    counterfactuals, ranker, best_instance = baycon.run(initial_instance, initial_prediction, target, data_analyzer, model, scaler, config['diabetes']['predictor']['round'])
     print(best_instance, initial_instance)
     predictions = np.array([])
     try:
@@ -222,15 +224,16 @@ def evaluate_distance(X_test, y_test, y_pred_test, X_count, y_count, scaler, dat
     print(f"Counterfactual validity: {validity}")
 
     # evaluate distance
-    mean_distance = distance_train(X_count_rescaled, X_train_rescaled, y_count, y_train.cpu()).numpy()
-    mean_distance_1 = distance_train(X_count_rescaled, X_train_1_rescaled, y_count, y_train_1.cpu()).numpy()
-    mean_distance_2 = distance_train(X_count_rescaled, X_train_2_rescaled, y_count, y_train_2.cpu()).numpy()
-    mean_distance_3 = distance_train(X_count_rescaled, X_train_3_rescaled, y_count, y_train_3.cpu()).numpy()
+    mean_distance, hamming_prox, relative_prox = distance_train(X_count_rescaled, X_train_rescaled.cpu(), y_count, y_train.cpu())
+    mean_distance_1, hamming_prox1, relative_prox1 = distance_train(X_count_rescaled, X_train_1_rescaled.cpu(), y_count, y_train_1.cpu())
+    mean_distance_2, hamming_prox2, relative_prox2 = distance_train(X_count_rescaled, X_train_2_rescaled.cpu(), y_count, y_train_2.cpu())
+    mean_distance_3, hamming_prox3, relative_prox3 = distance_train(X_count_rescaled, X_train_3_rescaled.cpu(), y_count, y_train_3.cpu())
     print(f"\n\033[1;32mDistance Evaluation - Counterfactual:Training Set\033[0m")
-    print(f"Mean distance with all training sets: {mean_distance}")
-    print(f"Mean distance with training set 1: {mean_distance_1}")
-    print(f"Mean distance with training set 2: {mean_distance_2}")
-    print(f"Mean distance with training set 3: {mean_distance_3}")
+    print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance}, {hamming_prox}, {relative_prox}")
+    print(f"Mean distance with training set 1 (proximity, hamming proximity, relative proximity): {mean_distance_1}, {hamming_prox1}, {relative_prox1}")
+    print(f"Mean distance with training set 2 (proximity, hamming proximity, relative proximity): {mean_distance_2}, {hamming_prox2}, {relative_prox2}")
+    print(f"Mean distance with training set 3 (proximity, hamming proximity, relative proximity): {mean_distance_3}, {hamming_prox3}, {relative_prox3}")
+
 
     hamming_distance = (X_count_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
     euclidean_distance = (torch.abs(X_count_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
@@ -284,7 +287,7 @@ if __name__ == "__main__":
     # data parameters
     client_list = [1,2,3, "server"] # 1, 2, 3, "server"    #add server_1
     # find the best federated global model
-    with open(f'../histories/predictor/server_{args.data_type}/metrics_500.json') as json_file:
+    with open(f'../histories/diabetes/predictor/server_{args.data_type}/metrics_300.json') as json_file:
         data = json.load(json_file)
     # take the min loss model
     best_epoch = data['loss'].index(min(data['loss'])) + 1
@@ -303,7 +306,7 @@ if __name__ == "__main__":
         for i in tqdm(range(len(X_test))):
             # define target
             y = model.predict(X_test[i].reshape(1, -1)).numpy()
-            t = Target(target_type="classification", target_feature="Diabetes_binary", target_value= 1 if y == 0 else 0)
+            t = Target(target_type="classification", target_feature="Labels", target_value= 1 if y == 0 else 0)
             counterfactuals, predictions, initial_instance, initial_prediction, data_analyzer, ranker, model, best_instance = execute(  
                 model, X_train, y_train, X_test, y_test, feature_names, scaler,
                 dataset_name="diabetes_random_client_1",

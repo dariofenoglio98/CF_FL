@@ -683,7 +683,8 @@ def server_side_evaluation(X_test, y_test, model=None, config=None): # not effic
             client_metrics['errors'] = errors
 
             # compute common changes
-            common_changes = (x_prime != X_test).sum(dim=-1).float()
+            common_changes = (x_prime - X_test)
+            # common_changes = (x_prime != X_test).sum(dim=-1).float()
             client_metrics['common_changes'] = common_changes
 
             # compute set of changed features
@@ -699,7 +700,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config):
     else: 
         errors = []
         common_changes = []
-        for client in client_data.keys():
+        for client in sorted(client_data.keys()):
             errors.append(client_data[client]['errors'].unsqueeze(0))
             common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
         errors = torch.cat(errors, dim=0)
@@ -712,13 +713,19 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config):
         rand_points = torch.normal(mean=0, std=0.1, size=(errors.shape))
         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
         errors_pca = pca.transform(errors.cpu().detach().numpy())
-        common_changes_pca = pca.transform(common_changes.cpu().detach().numpy())
+        pca = PCA(n_components=2, random_state=42)
+        rand_points = torch.normal(mean=0, std=0.1, size=(common_changes.shape[1:]))
+        rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
+        common_changes_pca = common_changes.clone().cpu().detach().numpy()
+        for i, el in enumerate(common_changes):
+            common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
         model_name = config["model_name"]
         # check if path exists
         if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}"):
             os.makedirs(f"results/{model_name}/{dataset}/{data_type}")
 
         # save errors and common changes
+        
         np.save(f"results/{model_name}/{dataset}/{data_type}/errors_{server_round}.npy", errors_pca)
         np.save(f"results/{model_name}/{dataset}/{data_type}/common_changes_{server_round}.npy", common_changes_pca)
 
