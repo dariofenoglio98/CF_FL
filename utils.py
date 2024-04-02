@@ -555,6 +555,36 @@ def load_data(client_id="1",device="cpu", type='random', dataset="diabetes"):
     y_test = torch.LongTensor(y_test.values).to(device)
     return X_train, y_train, X_val, y_val, X_test, y_test, num_examples
 
+def load_data_malicious(client_id="1",device="cpu", type='random', dataset="diabetes", attack_type="DP_random"):
+    # load data
+    if "MP" in attack_type:
+        df_train = pd.read_csv(f'data/df_{dataset}_{type}_{client_id}.csv')
+    else:
+        df_train = pd.read_csv(f'data/df_{dataset}_{type}_{attack_type}_{client_id}.csv')
+    if dataset == "breast":
+        df_train = df_train.drop(columns=["Unnamed: 0"])
+    # Dataset split
+    X = df_train.drop('Labels', axis=1)
+    y = df_train['Labels']
+    # Use 10 % of total data as Test set and the rest as (Train + Validation) set 
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.001) # use only 0.1% of the data as test set - i dont perform validation on client test set
+    # Use 20 % of (Train + Validation) set as Validation set
+    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2)
+    num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
+
+    # scale data
+    X_train = min_max_scaler(X_train.values, dataset=dataset)
+    X_val = min_max_scaler(X_val.values, dataset=dataset)
+    X_train = torch.Tensor(X_train).float().to(device)
+    X_val = torch.Tensor(X_val).float().to(device)
+    y_train = torch.LongTensor(y_train.values).to(device)
+    y_val = torch.LongTensor(y_val.values).to(device)
+    # add test set
+    X_test = min_max_scaler(X_test.values, dataset=dataset)
+    X_test = torch.Tensor(X_test).float().to(device)
+    y_test = torch.LongTensor(y_test.values).to(device)
+    return X_train, y_train, X_val, y_val, X_test, y_test, num_examples
+
 def load_data_test(data_type="random", dataset="diabetes"):
         device = check_gpu(manual_seed=True, print_info=False)
         df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
@@ -570,7 +600,11 @@ def load_data_test(data_type="random", dataset="diabetes"):
         y_test = torch.LongTensor(y.values).to(device)
         return X_test, y_test
 
-def evaluation_central_test(data_type="random", dataset="diabetes", best_model_round=1, model=None, model_path=None, config=None):
+def evaluation_central_test(args, best_model_round=1, model=None, model_path=None, config=None):
+    # read arguments
+    data_type=args.data_type
+    dataset=args.dataset
+
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
     
@@ -611,7 +645,11 @@ def evaluation_central_test(data_type="random", dataset="diabetes", best_model_r
     visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type, dataset, config=config)
     # return H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled
 
-def evaluation_central_test_predictor(data_type="random", dataset="diabetes", best_model_round=1, model_path=None, config=None):    
+def evaluation_central_test_predictor(args, best_model_round=1, model_path=None, config=None): 
+    # read arguments
+    data_type=args.data_type
+    dataset=args.dataset   
+
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
     
@@ -731,11 +769,11 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config):
 
         # IoU feature changed
         for i in client_data.keys():
-            print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")
+            # print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")
             for j in client_data.keys():
                 if i != j:
                     iou = intersection_over_union(client_data[i]['changed_features'], client_data[j]['changed_features'])
-                    print(f"IoU between client {i} and client {j}: {iou}")
+                    #print(f"IoU between client {i} and client {j}: {iou}")
 
 
 
@@ -785,7 +823,15 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     # return len(intersection) / len(union) if len(union) else -1
     return len(intersection) / a.shape[0]
 
-def evaluate_distance(n_clients=3, data_type="random", dataset="diabetes", best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name=''):
+def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name=''):
+    # read arguments
+    if centralized:
+        n_clients=args.n_clients
+    else:
+        n_clients=args.n_clients-args.n_attackers
+    data_type=args.data_type
+    dataset=args.dataset
+    
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -994,37 +1040,51 @@ def check_gpu(manual_seed=True, print_info=True):
     return device
 
 # plot and save plot on server side
-def plot_loss_and_accuracy(loss, accuracy, rounds, data_type="random", config=None, show=True):
+def plot_loss_and_accuracy(args, loss, accuracy, validity, config=None, show=True):
+    # read args
+    rounds = args.rounds
+    data_type = args.data_type 
+    attack_type = args.attack_type 
+    n_attackers=args.n_attackers
+
+    # Create a folder for the server
     folder = config['image_folder'] + f"/server_side_{data_type}/"
-    # check if folder exists
     if not os.path.exists(folder):
         os.makedirs(folder)
     
     # Plot loss and accuracy
     plt.figure(figsize=(12, 6))
+
+    # check if validity is all zeros
+    if all(v == 0 for v in validity):
+        plt.plot(loss, label='Loss')
+        plt.plot(accuracy, label='Accuracy')
+        min_loss_index = loss.index(min(loss))
+        max_accuracy_index = accuracy.index(max(accuracy))
+        print(f"\n\033[1;34mServer Side\033[0m \nMinimum Loss occurred at round {min_loss_index + 1} with a loss value of {loss[min_loss_index]} \nMaximum Accuracy occurred at round {max_accuracy_index + 1} with an accuracy value of {accuracy[max_accuracy_index]}\n")
+        plt.scatter(min_loss_index, loss[min_loss_index], color='blue', marker='*', s=100, label='Min Loss')
+        plt.scatter(max_accuracy_index, accuracy[max_accuracy_index], color='orange', marker='*', s=100, label='Max Accuracy')
+    else:
+        plt.plot(loss, label='Loss')
+        plt.plot(accuracy, label='Accuracy')
+        plt.plot(validity, label='Validity')
+        min_loss_index = loss.index(min(loss))
+        max_accuracy_index = accuracy.index(max(accuracy))
+        max_validity_index = validity.index(max(validity))
+        print(f"\n\033[1;34mServer Side\033[0m \nMinimum Loss occurred at round {min_loss_index + 1} with a loss value of {loss[min_loss_index]} \nMaximum Accuracy occurred at round {max_accuracy_index + 1} with an accuracy value of {accuracy[max_accuracy_index]} \nMaximum Validity occurred at round {max_validity_index + 1} with a validity value of {validity[max_validity_index]}\n")
+        plt.scatter(min_loss_index, loss[min_loss_index], color='blue', marker='*', s=100, label='Min Loss')
+        plt.scatter(max_accuracy_index, accuracy[max_accuracy_index], color='orange', marker='*', s=100, label='Max Accuracy')
+        plt.scatter(max_validity_index, validity[max_validity_index], color='green', marker='*', s=100, label='Max Validity')
     
-    # Plot loss and accuracy
-    plt.plot(loss, label='Loss')
-    plt.plot(accuracy, label='Accuracy')
-
-    # Find the index (round) of minimum loss and maximum accuracy
-    min_loss_index = loss.index(min(loss))
-    max_accuracy_index = accuracy.index(max(accuracy))
-
-    # Print the rounds where min loss and max accuracy occurred
-    # print in blue color
-    print(f"\n\033[1;34mServer Side\033[0m \nMinimum Loss occurred at round {min_loss_index + 1} with a loss value of {loss[min_loss_index]} \nMaximum Accuracy occurred at round {max_accuracy_index + 1} with an accuracy value of {accuracy[max_accuracy_index]}\n")
-
-    # Mark these points with a star
-    plt.scatter(min_loss_index, loss[min_loss_index], color='blue', marker='*', s=100, label='Min Loss')
-    plt.scatter(max_accuracy_index, accuracy[max_accuracy_index], color='orange', marker='*', s=100, label='Max Accuracy')
-
     # Labels and title
     plt.xlabel('Epoch')
     plt.ylabel('Metrics')
     plt.title('Distributed Metrics (Weighted Average on Validation Set)')
     plt.legend()
-    plt.savefig(folder + f"training_{rounds}_rounds.png")
+    if n_attackers > 0:
+        plt.savefig(folder + f"training_{attack_type}_{rounds}_rounds_{n_attackers}_attackers.png")
+    else:
+        plt.savefig(folder + f"training_{rounds}_rounds.png")
     if show:
         plt.show()
     return min_loss_index+1, max_accuracy_index+1
@@ -1072,11 +1132,16 @@ def plot_loss_and_accuracy_client_net(client_id, data_type="random"):
     plt.show()
 
 # plot and save plot on client side
-def plot_loss_and_accuracy_client(client_id, data_type="random", config=None, show=True):
-    # read data
-    df = pd.read_csv(config['history_folder'] + f'client_{data_type}_{client_id}/metrics.csv')
-    # Create a folder for the client
-    folder = config['image_folder'] + f"client_{data_type}_{client_id}"
+def plot_loss_and_accuracy_client(client_id, data_type="random", config=None, show=True, attack_type=None):
+    if attack_type == None:
+        # read data
+        df = pd.read_csv(config['history_folder'] + f'client_{data_type}_{client_id}/metrics.csv')
+        folder = config['image_folder'] + f"client_{data_type}_{client_id}"
+    else:
+        # read data
+        df = pd.read_csv(config['history_folder'] + f'malicious_client_{data_type}_{attack_type}_{client_id}/metrics.csv')
+        folder = config['image_folder'] + f"malicious_client_{data_type}_{attack_type}_{client_id}"
+
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -1098,8 +1163,11 @@ def plot_loss_and_accuracy_client(client_id, data_type="random", config=None, sh
     max_validity_round = df.loc[validity.idxmax(), 'Round']
 
     # Print the rounds where min loss and max accuracy occurred
-    print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()} \nValidity occurred at round {max_validity_round} with a validity value of {validity.max()}\n")
-
+    if attack_type == None:
+        print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()} \nValidity occurred at round {max_validity_round} with a validity value of {validity.max()}\n")
+    else:
+        print(f"\n\033[1;33mMalicious Client {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()} \nValidity occurred at round {max_validity_round} with a validity value of {validity.max()}\n")
+    
     # Mark these points with a star
     plt.scatter(min_loss_round, loss.min(), color='blue', marker='*', s=100, label='Min Loss')
     plt.scatter(max_accuracy_round, accuracy.max(), color='orange', marker='*', s=100, label='Max Accuracy')
@@ -1115,9 +1183,11 @@ def plot_loss_and_accuracy_client(client_id, data_type="random", config=None, sh
         plt.show()
 
 # save client metrics
-def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None, hamming_distance=None, euclidean_distance=None, iou=None, var=None, client_id=1, data_type="random", tot_rounds=20, history_folder="histories/"):
-    # create folders
-    folder = history_folder + f"client_{data_type}_{client_id}/"
+def save_client_metrics(round_num, loss, accuracy, validity=None, proximity=None, hamming_distance=None, euclidean_distance=None, iou=None, var=None, client_id=1, data_type="random", tot_rounds=20, history_folder="histories/", attack_type=None):
+    if attack_type == None:
+        folder = history_folder + f"client_{data_type}_{client_id}/"
+    else:
+        folder = history_folder + f"malicious_client_{data_type}_{attack_type}_{client_id}/"
     if not os.path.exists(folder):
         os.makedirs(folder)
     # file path
@@ -1165,11 +1235,15 @@ def plot_loss_and_accuracy_centralized(loss_val, acc_val, data_type="random", cl
     if show:
         plt.show()
 
-def plot_loss_and_accuracy_client_predictor(client_id, data_type="random", config=None, show=True):
-    # read data
-    df = pd.read_csv(config['history_folder'] + f'client_{data_type}_{client_id}/metrics.csv')
-    # Create a folder for the client
-    folder = config['image_folder'] + f"client_{data_type}_{client_id}"
+def plot_loss_and_accuracy_client_predictor(client_id, data_type="random", config=None, show=True, attack_type=None):
+    if attack_type == None:
+        # read data
+        df = pd.read_csv(config['history_folder'] + f'client_{data_type}_{client_id}/metrics.csv')
+        folder = config['image_folder'] + f"client_{data_type}_{client_id}"
+    else: 
+        # read data
+        df = pd.read_csv(config['history_folder'] + f'malicious_client_{data_type}_{attack_type}_{client_id}/metrics.csv')
+        folder = config['image_folder'] + f"malicious_client_{data_type}_{attack_type}_{client_id}"
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -1188,7 +1262,10 @@ def plot_loss_and_accuracy_client_predictor(client_id, data_type="random", confi
     max_accuracy_round = df.loc[accuracy.idxmax(), 'Round']
 
     # Print the rounds where min loss and max accuracy occurred
-    print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()}\n")
+    if attack_type == None: 
+        print(f"\n\033[1;33mClient {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()}\n")
+    else:
+        print(f"\n\033[1;33mMalicious Client {client_id}\033[0m \nMinimum Loss occurred at round {min_loss_round} with a loss value of {loss.min()} \nMaximum Accuracy occurred at round {max_accuracy_round} with an accuracy value of {accuracy.max()}\n")
 
     # Mark these points with a star
     plt.scatter(min_loss_round, loss.min(), color='blue', marker='*', s=100, label='Min Loss')
@@ -1235,7 +1312,7 @@ class Predictor(nn.Module):
         self.fc4 = nn.Linear(256, 64)
         self.fc5 = nn.Linear(64, config["output_dim"])
         self.relu = nn.ReLU()
-        self.cid = config["client_id"]
+        self.cid = nn.Parameter(torch.tensor([1]), requires_grad=False)
 
     def set_client_id(self, client_id):
         """Update the cid parameter to the specified client_id."""
@@ -1265,7 +1342,12 @@ def freeze_params(model, model_section):
             param.requires_grad = False
     return model
 
-def personalization(n_clients=3, model_fn=None, data_type="random", dataset="diabetes", config=None, best_model_round=None):
+def personalization(args, model_fn=None, config=None, best_model_round=None):
+    # read arguments
+    n_clients=args.n_clients 
+    data_type=args.data_type 
+    dataset=args.dataset
+    
     # function
     train_fn = trainings[config["model_name"]]
     evaluate_fn = evaluations[config["model_name"]]
