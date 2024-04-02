@@ -24,13 +24,13 @@
 #     exit 1
 # fi
 
-model="vcnet"
+model="net"
 data_type="random"
-n_rounds=10
+n_rounds=150
 dataset="synthetic"
 n_clients=10
-n_attackers=1  # Adjust this as needed for testing attackers
-attack_type="MP_random" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random"
+n_attackers=2  # Adjust this as needed for testing attackers
+attack_type="DP_random" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random"
 pers=0
 
 echo -e "\n\033[1;36mStarting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"

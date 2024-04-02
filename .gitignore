@@ -1,6 +1,10 @@
 baycon/
 checkpoints/
-data/
+data/*.csv
+data/*.npy
 histories/
 images/
 __pycache__/
+paper_results/
+results/
+.DS_Store

@@ -1,1 +1,1 @@
-{"validity": 0.0, "mean_distance": 210.0, "mean_distance_1": 210.0, "mean_distance_2": 210.0, "mean_distance_3": 210.0, "hamming_distance": 1.0, "euclidean_distance": 1.0, "iou": 0.0, "var": 1.0}
+{"validity": 1.0, "mean_distance": 6.333333492279053, "mean_distance_1": 7.0, "mean_distance_2": 6.666666507720947, "mean_distance_3": 6.333333492279053, "hamming_distance": 1.3333333730697632, "euclidean_distance": 4.666666507720947, "iou": 0.0, "var": 1.0}
