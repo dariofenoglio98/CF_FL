@@ -864,7 +864,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     X_train = min_max_scaler(X_train_rescaled_tot.cpu().numpy(), dataset=dataset)
     X_test = min_max_scaler(X.values, dataset=dataset)
     X_test = torch.Tensor(X_test).float().to(device)
-    #y_test = torch.LongTensor(y.values).to(device)
+    y_test = torch.LongTensor(y.values).to(device)
 
     # load model
     model = model_fn(config).to(device)
@@ -919,8 +919,10 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
         plot_cf(x_prime_rescaled, H2_test, client_id=client_id, config=config, centralised=centralized, data_type=data_type, show=False, add_name=add_name)
 
     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+    accuracy = (torch.argmax(H_test.cpu(), dim=1) == y_test.cpu()).float().mean().item()
     print(f"\n\033[1;91mEvaluation on General Testing Set - Server\033[0m")
     print(f"Counterfactual validity: {validity:.4f}")
+    print(f"Counterfactual accuracy: {accuracy:.4f}")
 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
     print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
@@ -945,7 +947,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
     print('Relative Distance: {:.2f}'.format(relative_distance))
     print('Intersection over Union: {:.2f}'.format(iou))
-    print('Variability: {:.2f}'.format(var))
+    print('Variability: {:.2f} \n'.format(var))
 
     # save metrics csv file
     data = pd.DataFrame({
@@ -1345,7 +1347,7 @@ def freeze_params(model, model_section):
 
 def personalization(args, model_fn=None, config=None, best_model_round=None):
     # read arguments
-    n_clients=args.n_clients 
+    n_clients=args.n_clients-args.n_attackers 
     data_type=args.data_type 
     dataset=args.dataset
     
@@ -1472,8 +1474,10 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 plot_cf(x_prime_rescaled, H2_test, client_id=c+1, config=config, data_type=data_type, show=False)
 
             validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+            accuracy = (torch.argmax(H_test.cpu(), dim=1) == y_test.cpu()).float().mean().item()
             print("\033[1;91m\nEvaluation on General Testing Set - Server\033[0m")
             print(f"Counterfactual validity client {c+1}: {validity:.4f}")
+            print(f"Counterfactual accuracy client {c+1}: {accuracy:.4f}")
 
             # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
             print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
@@ -1600,8 +1604,10 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
         y_prime = y_prime.cpu() 
 
         validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+        accuracy = (torch.argmax(H_test.cpu(), dim=1) == y_test.cpu()).float().mean().item()
         print(f"\033[1;91mEvaluation on Client {client_id} Testing Set:\033[0m")
         print(f"Counterfactual validity: {validity:.4f}")
+        print(f"Counterfactual accuracy: {accuracy:.4f}")
 
         # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
         print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
@@ -1871,7 +1877,7 @@ config_tests = {
             "lambda4": 20,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 70,
+            "n_epochs_personalization": 10,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
@@ -1918,8 +1924,8 @@ config_tests = {
             "to_freeze": ["fc1", "fc2", "fc3"],
             "output_round": False,
         },
-        "min" : np.array([-5., -5., -5]),
-        "max" : np.array([5., 5., 5.]),
+        "min" : np.array([-7., -5., -7]),
+        "max" : np.array([7., 5., 7.]),
         
     }
 }
