@@ -212,7 +212,7 @@ class Net(nn.Module,):
         
         out2 = self.fc5(out2)
         
-        return out, x_reconstructed, qz2_x, p_z2, out2, x_prime_reconstructed, qz3_z2_c_y_y_prime, pz3_z2_c_y, y_prime
+        return out, x_reconstructed, qz2_x, p_z2, out2, x_prime_reconstructed, qz3_z2_c_y_y_prime, pz3_z2_c_y, y_prime, z2, z3
 
 class ConceptVCNet(nn.Module,):
     def __init__(self, config=None):
@@ -369,7 +369,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
 
     for epoch in range(1, n_epochs+1):
         model.train()
-        H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime = model(X_train)
+        H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_train)
         loss_task = loss_fn(H, y_train)
         loss_kl = torch.distributions.kl_divergence(p, q).mean()
         loss_rec = F.mse_loss(x_reconstructed, X_train, reduction='mean')
@@ -377,14 +377,18 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         loss_kl2 = torch.distributions.kl_divergence(p_prime, q_prime).mean() 
         loss_p_d = torch.distributions.kl_divergence(p, p_prime).mean() 
         loss_q_d = torch.distributions.kl_divergence(q, q_prime).mean() 
+        loss_dist = F.mse_loss(z3, z2, reduction='mean')
+        l_0_cont = (1 - torch.exp(-((torch.abs(X_train - x_prime)**2)/(2*((1)**2))))).mean(dim=0).sum()
+
 
         lambda1 = config["lambda1"] # loss parameter for kl divergence p-q and p_prime-q_prime
         lambda2 = config["lambda2"] # loss parameter for input reconstruction
         lambda3 = config["lambda3"] # loss parameter for validity of counterfactuals
         lambda4 = config["lambda4"] # loss parameter for creating counterfactuals that are closer to the initial input
+        lambda5 = config["lambda5"] # loss parameter for creating counterfactuals that are closer to the initial input wrt hamming dist
         #             increasing it, decrease the validity of counterfactuals. It is expected and makes sense.
         #             It is a design choice to have better counterfactuals or closer counterfactuals.
-        loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_q_d
+        loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_dist + lambda5*l_0_cont
         # loss = loss_task + 0.1*loss_kl + 10*loss_rec + 0.5*loss_validity + 0.1*loss_kl2 + loss_p_d + loss_q_d
         if print_info:
             print(loss_task, loss_kl, loss_kl2, loss_rec, loss_validity)
@@ -400,7 +404,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         
         model.eval()
         with torch.no_grad():
-            H_val, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime = model(X_val, include=False)
+            H_val, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_val, include=False)
             loss_val = loss_fn(H_val, y_val)
             acc_val = (torch.argmax(H_val, dim=1) == y_val).float().mean().item()
             acc_prime_val = (torch.argmax(H2, dim=1) == y_prime.argmax(dim=-1)).float().mean().item()
@@ -489,7 +493,7 @@ def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n
 def evaluate(model, X_test, y_test, loss_fn, X_train, y_train, config=None):
     model.eval()
     with torch.no_grad():
-        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
+        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False)
         loss_test = loss_fn(H_test, y_test)
         acc_test = (torch.argmax(H_test, dim=1) == y_test).float().mean().item()
 
@@ -630,7 +634,7 @@ def evaluation_central_test(args, best_model_round=1, model=None, model_path=Non
     model.eval()
     with torch.no_grad():
         if model.__class__.__name__ == "Net":
-            H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False)
+            H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False)
         elif model.__class__.__name__ == "ConceptVCNet":
             H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False)
             x_prime = x_reconstructed
@@ -710,7 +714,7 @@ def server_side_evaluation(X_test, y_test, model=None, config=None): # not effic
         else:
             mask = config['mask_evaluation']
             if model.__class__.__name__ == "Net":
-                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False, mask_init=mask)
             elif model.__class__.__name__ == "ConceptVCNet":
                 H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
                 x_prime = x_reconstructed
@@ -881,7 +885,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
             # run test_repetition times to get the average: 
             H2_test_list, x_prime_list, y_prime_list = [], [], []
             for _ in range(test_repetitions):
-                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False, mask_init=mask)
                 H2_test_list.append(H2_test)
                 x_prime_list.append(x_prime)
                 y_prime_list.append(y_prime)
@@ -915,7 +919,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     y_prime = y_prime.cpu() 
 
     # plot counterfactuals
-    if x_prime_rescaled.shape[-1] == 2:
+    if x_prime_rescaled.shape[-1] == 3:
         plot_cf(x_prime_rescaled, H2_test, client_id=client_id, config=config, centralised=centralized, data_type=data_type, show=False, add_name=add_name)
 
     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
@@ -1434,7 +1438,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                     # run test_repetitions times and take the mean
                     H2_test_list, x_prime_list, y_prime_list = [], [], []
                     for _ in range(test_repetitions):
-                        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
+                        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model_trained(X_test, include=False, mask_init=mask)
                         H2_test_list.append(H2_test)
                         x_prime_list.append(x_prime)
                         y_prime_list.append(y_prime)
@@ -1470,7 +1474,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
             y_prime = y_prime.cpu() 
 
             # plot counterfactuals
-            if x_prime_rescaled.shape[-1] == 2:
+            if x_prime_rescaled.shape[-1] == 3:
                 plot_cf(x_prime_rescaled, H2_test, client_id=c+1, config=config, data_type=data_type, show=False)
 
             validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
@@ -1570,7 +1574,7 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
                 # run test_repetitions times and take the mean
                 H2_test_list, x_prime_list, y_prime_list = [], [], []
                 for _ in range(test_repetitions):
-                    H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model(X_test, include=False, mask_init=mask)
+                    H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False, mask_init=mask)
                     H2_test_list.append(H2_test)
                     x_prime_list.append(x_prime)
                     y_prime_list.append(y_prime)
@@ -1667,15 +1671,43 @@ def plot_cf(x, y, client_id, config, data_type, centralised=False, show=True, ad
     y = y.argmax(dim=-1).detach().cpu().numpy()
     plt.scatter(x[:, 0], x[:, 1], c=y, cmap='viridis')
     # plt line to separate classes with the equation y = -0.72654253x
-    x_line = np.linspace(-5, 5, 100)
-    y_line = -0.72654253 * x_line
-    plt.plot(x_line, y_line, color='red')
+    # x_line = np.linspace(-5, 5, 100)
+    # y_line = -0.72654253 * x_line
+    # plt.plot(x_line, y_line, color='red')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.xlim(-5, 5)
+    plt.xlim(-7, 7)
     plt.ylim(-5, 5)
     plt.title('Generated Counterfactuals')
-    plt.savefig(folder + f"counterfactual{add_name}.png")
+    plt.savefig(folder + f"counterfactual{add_name}_2D_12.png")
+    plt.clf() 
+    plt.scatter(x[:, 2], x[:, 1], c=y, cmap='viridis')
+    # plt line to separate classes with the equation y = -0.72654253x
+    # x_line = np.linspace(-5, 5, 100)
+    # y_line = -0.72654253 * x_line
+    # plt.plot(x_line, y_line, color='red')
+    plt.xlabel('x3')
+    plt.ylabel('x2')
+    plt.xlim(-7, 7)
+    plt.ylim(-5, 5)
+    plt.title('Generated Counterfactuals')
+    plt.savefig(folder + f"counterfactual{add_name}_2D_12.png")
+    plt.clf() 
+    fig = plt.figure(figsize=plt.figaspect(1))
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
+    ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=y, cmap='viridis')
+    # plt line to separate classes with the equation y = -0.72654253x
+    # x_line = np.linspace(-5, 5, 100)
+    # y_line = -0.72654253 * x_line
+    # plt.plot(x_line, y_line, color='red')
+    ax.set_xlabel('x1')
+    ax.set_ylabel('x2')
+    ax.set_zlabel('x3')
+    ax.set_xlim(-7, 7)
+    ax.set_ylim(-5, 5)
+    ax.set_zlim(-7, 7)
+    ax.set_title('Generated Counterfactuals')
+    plt.savefig(folder + f"counterfactual{add_name}_3D.png")
     if show:
         plt.show()
 
@@ -1729,6 +1761,7 @@ config_tests = {
             "lambda2": 12,
             "lambda3": 1,
             "lambda4": 1.5,
+            "lambda5": 0.000001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
             "n_epochs_personalization": 5,
@@ -1798,6 +1831,7 @@ config_tests = {
             "lambda2": 12,
             "lambda3": 1,
             "lambda4": 1.5,
+            "lambda5": 0.000001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
             "n_epochs_personalization": 5,
@@ -1874,7 +1908,8 @@ config_tests = {
             "lambda1": 3,
             "lambda2": 12,
             "lambda3": 3,
-            "lambda4": 20,
+            "lambda4": 10,
+            "lambda5": 0.001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
             "n_epochs_personalization": 10,
