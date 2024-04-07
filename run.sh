@@ -27,11 +27,11 @@
 model="net"
 data_type="cluster"  # Options: "cluster", "2cluster", "random"
 n_rounds=10
-dataset="breast" # Options: "diabetes", "breast", "synthetic"
+dataset="diabetes" # Options: "diabetes", "breast", "synthetic"
 n_clients=5
 n_attackers=1  # Adjust this as needed for testing attackers
 attack_type="DP_inverted_loss" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"
-pers=1
+pers=0
 
 echo -e "\n\033[1;36mStarting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
 n_clients_server=$((n_clients+n_attackers))

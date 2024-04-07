@@ -818,7 +818,7 @@ def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: tor
     rel_dist[filter] = 1
     min_distances_rel, min_index_rel = torch.min(rel_dist, dim=-1)
 
-    return min_distances.mean(), min_distances_ham.mean(), min_distances_rel.mean()
+    return min_distances.mean().cpu().item(), min_distances_ham.mean().cpu().item(), min_distances_rel.mean().cpu().item()
 
 def variability(a: torch.Tensor, b: torch.Tensor):
     bool_a = a # > 0.5   !!!!!!
@@ -971,6 +971,31 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print('Intersection over Union: {:.2f}'.format(iou))
     print('Variability: {:.2f} \n'.format(var))
 
+    # Create a dictionary for the xlsx file
+    df = {
+        'Label': [
+            'Validity', 'Accuracy', 'Loss', 'Distance', 
+            'Distance 1', 'Distance 2', 'Distance 3', 
+            'Distance 4', 'Distance 5', 'Hamming D', 
+            'Euclidean D', 'Relative D', 'IoU', 'Variability'
+        ],
+        'Proximity': [
+            validity, accuracy, loss.cpu().item(), mean_distance, 
+            *mean_distance_list, hamming_distance, 
+            euclidean_distance, relative_distance, iou, var
+        ],
+        'Hamming': [
+            None, None, None, hamming_prox, 
+            *hamming_prox_list, hamming_distance, 
+            None, None, None, None
+        ],
+        'Rel. Proximity': [
+            None, None, None, relative_prox, 
+            *relative_prox_list, None, 
+            None, None, None, None
+        ]
+    }
+
     # save metrics csv file
     data = pd.DataFrame({
         "validity": [validity],
@@ -986,21 +1011,24 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
         "iou": [iou],
         "var": [var]
     })
+
     # create folder
     if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
         os.makedirs(config['history_folder'] + f"server_{data_type}/")
+
     # save to csv
     data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
+
+    # Creating the DataFrame
+    df = pd.DataFrame(df)
+    df.set_index('Label', inplace=True)
+    df.to_excel(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.xlsx")
 
     # single client evaluation
     if spec_client_val:
         for n in range(1, n_clients+1):
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, 
                                     client_id=n, n_clients=n_clients, model=model, data_type=data_type, config=config)
-
-
-
-
 
  # visualize examples
 def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random", dataset="diabetes", config=None):
@@ -1534,6 +1562,31 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
             print('Intersection over Union: {:.2f}'.format(iou))
             print('Variability: {:.2f}'.format(var))
 
+            # Create a dictionary for the xlsx file
+            df = {
+                'Label': [
+                    'Validity', 'Accuracy', 'Loss', 'Distance', 
+                    'Distance 1', 'Distance 2', 'Distance 3', 
+                    'Distance 4', 'Distance 5', 'Hamming D', 
+                    'Euclidean D', 'Relative D', 'IoU', 'Variability'
+                ],
+                'Proximity': [
+                    validity, accuracy, loss.cpu().item(), mean_distance, 
+                    *mean_distance_list, hamming_distance, 
+                    euclidean_distance, relative_distance, iou, var
+                ],
+                'Hamming': [
+                    None, None, None, hamming_prox, 
+                    *hamming_prox_list, hamming_distance, 
+                    None, None, None, None
+                ],
+                'Rel. Proximity': [
+                    None, None, None, relative_prox, 
+                    *relative_prox_list, None, 
+                    None, None, None, None
+                ]
+            }
+
             # save metrics csv file
             data = pd.DataFrame({
                 "validity": [validity],
@@ -1549,12 +1602,23 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 "iou": [iou],
                 "var": [var]
             })
+
+            # create folder
+            if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+                os.makedirs(config['history_folder'] + f"server_{data_type}/")
+
             # save to csv
-            data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
+            # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
+
+            # Creating the DataFrame
+            df = pd.DataFrame(df)
+            df.set_index('Label', inplace=True)
+            df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
 
             # client specific evaluation 
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
 
+# 
 def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list,
                                client_id=1, n_clients=3, model=None, data_type="random", config=None, add_name="", loss_fn=torch.nn.CrossEntropyLoss()):
     dataset = config["dataset"]
@@ -1667,25 +1731,60 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
         print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
         print('Relative Distance: {:.2f}'.format(relative_distance))
         print('Intersection over Union: {:.2f}'.format(iou))
-        print('Variability: {:.2f}'.format(var))
+        print('Variability: {:.2f}'.format(var)) 
         
-        # save metrics csv file
-        data = pd.DataFrame({
-            "validity": [validity],
-            "mean_distance": [mean_distance],
-            "hamming_prox": [hamming_prox],
-            "relative_prox": [relative_prox],
-            "mean_distance_one_trainset": [mean_distance_list],
-            "hamming_prox_one_trainset": [hamming_prox_list],
-            "relative_prox_one_trainset": [relative_prox_list],
-            "hamming_distance": [hamming_distance],
-            "euclidean_distance": [euclidean_distance],
-            "relative_distance": [relative_distance],
-            "iou": [iou],
-            "var": [var]
-        })
-        # save to csv
-        data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.csv")
+    # Create a dictionary for the xlsx file
+    df = {
+        'Label': [
+            'Validity', 'Accuracy', 'Loss', 'Distance', 
+            'Distance 1', 'Distance 2', 'Distance 3', 
+            'Distance 4', 'Distance 5', 'Hamming D', 
+            'Euclidean D', 'Relative D', 'IoU', 'Variability'
+        ],
+        'Proximity': [
+            validity, accuracy, loss.cpu().item(), mean_distance, 
+            *mean_distance_list, hamming_distance, 
+            euclidean_distance, relative_distance, iou, var
+        ],
+        'Hamming': [
+            None, None, None, hamming_prox, 
+            *hamming_prox_list, hamming_distance, 
+            None, None, None, None
+        ],
+        'Rel. Proximity': [
+            None, None, None, relative_prox, 
+            *relative_prox_list, None, 
+            None, None, None, None
+        ]
+    }
+
+    # save metrics csv file
+    data = pd.DataFrame({
+        "validity": [validity],
+        "mean_distance": [mean_distance],
+        "hamming_prox": [hamming_prox],
+        "relative_prox": [relative_prox],
+        "mean_distance_one_trainset": [mean_distance_list],
+        "hamming_prox_one_trainset": [hamming_prox_list],
+        "relative_prox_one_trainset": [relative_prox_list],
+        "hamming_distance": [hamming_distance],
+        "euclidean_distance": [euclidean_distance],
+        "relative_distance": [relative_distance],
+        "iou": [iou],
+        "var": [var]
+    })
+
+    # create folder
+    if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+        os.makedirs(config['history_folder'] + f"server_{data_type}/")
+
+    # save to csv
+    # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.csv")
+
+    # Creating the DataFrame
+    df = pd.DataFrame(df)
+    df.set_index('Label', inplace=True)
+    df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.xlsx")
 
 def plot_cf(x, y, client_id, config, data_type, centralised=False, show=True, add_name=""):
     centralised = "centralized" if centralised else ""
