@@ -301,6 +301,22 @@ class ConceptVCNet(nn.Module,):
 
         return out, x_reconstructed, q_cf, cond, out2
 
+def loss_function_vcnet(H, x_reconstructed, q, y_prime, H2, X_train, y_train, loss_fn, config=None, print_info=False):
+    loss_task = loss_fn(H, y_train)
+    p = torch.distributions.Normal(torch.zeros_like(q.mean), torch.ones_like(q.mean))
+    loss_kl = torch.distributions.kl_divergence(p, q).mean()
+    loss_rec = F.mse_loss(x_reconstructed, X_train, reduction='mean')
+
+    lambda1 = config["lambda1"] # loss parameter for kl divergence p-q and p_prime-q_prime
+    lambda2 = config["lambda2"] # loss parameter for input reconstruction
+
+    loss = loss_task + lambda1*loss_kl + lambda2*loss_rec 
+
+    if print_info:
+        print(loss_task, loss_kl, loss_rec)
+
+    return loss
+
 # train vcnet
 def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
     train_loss = list()
@@ -312,18 +328,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
     for epoch in range(1, n_epochs+1):
         model.train()
         H, x_reconstructed, q, y_prime, H2 = model(X_train)
-        loss_task = loss_fn(H, y_train)
-        p = torch.distributions.Normal(torch.zeros_like(q.mean), torch.ones_like(q.mean))
-        loss_kl = torch.distributions.kl_divergence(p, q).mean()
-        loss_rec = F.mse_loss(x_reconstructed, X_train, reduction='mean')
-
-        lambda1 = config["lambda1"] # loss parameter for kl divergence p-q and p_prime-q_prime
-        lambda2 = config["lambda2"] # loss parameter for input reconstruction
-
-        loss = loss_task + lambda1*loss_kl + lambda2*loss_rec 
-
-        if print_info:
-            print(loss_task, loss_kl, loss_rec)
+        loss = loss_function_vcnet(H, x_reconstructed, q, y_prime, H2, X_train, y_train, loss_fn, config=config)
         train_loss.append(loss.item())
         
         optimizer.zero_grad()
@@ -358,18 +363,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
     else:  
         return model, train_loss, val_loss, acc, acc_prime, acc_val
 
-
-# train our model
-def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
-    train_loss = list()
-    train_acc = list()
-    val_loss = list()
-    val_acc = list()
-    best_loss = 1000
-
-    for epoch in range(1, n_epochs+1):
-        model.train()
-        H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_train)
+def loss_function(H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3, X_train, y_train, loss_fn, config=None, print_info=False):
         loss_task = loss_fn(H, y_train)
         loss_kl = torch.distributions.kl_divergence(p, q).mean()
         loss_rec = F.mse_loss(x_reconstructed, X_train, reduction='mean')
@@ -389,9 +383,25 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         #             increasing it, decrease the validity of counterfactuals. It is expected and makes sense.
         #             It is a design choice to have better counterfactuals or closer counterfactuals.
         loss = loss_task + lambda1*loss_kl + lambda2*loss_rec + lambda3*loss_validity + lambda1*loss_kl2 + loss_p_d + lambda4*loss_dist + lambda5*l_0_cont
-        # loss = loss_task + 0.1*loss_kl + 10*loss_rec + 0.5*loss_validity + 0.1*loss_kl2 + loss_p_d + loss_q_d
+
         if print_info:
             print(loss_task, loss_kl, loss_kl2, loss_rec, loss_validity)
+        
+        return loss
+        
+
+# train our model
+def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
+    train_loss = list()
+    train_acc = list()
+    val_loss = list()
+    val_acc = list()
+    best_loss = 1000
+
+    for epoch in range(1, n_epochs+1):
+        model.train()
+        H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_train)
+        loss = loss_function(H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3, X_train, y_train, loss_fn, config=config)
         train_loss.append(loss.item())
         
         optimizer.zero_grad()
@@ -828,7 +838,7 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     # return len(intersection) / len(union) if len(union) else -1
     return len(intersection) / a.shape[0]
 
-def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name=''):
+def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name='', loss_fn=torch.nn.CrossEntropyLoss()):
     # read arguments
     if centralized:
         n_clients=args.n_clients
@@ -883,26 +893,30 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     with torch.no_grad():
         if model.__class__.__name__ == "Net":
             # run test_repetition times to get the average: 
-            H2_test_list, x_prime_list, y_prime_list = [], [], []
+            H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
             for _ in range(test_repetitions):
                 H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False, mask_init=mask)
                 H2_test_list.append(H2_test)
                 x_prime_list.append(x_prime)
                 y_prime_list.append(y_prime)
+                loss_list.append(loss_function(H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3, X_test, y_test, loss_fn, config=config))
             H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
             x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
             y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+            loss = torch.mean(torch.stack(loss_list), dim=0)
         elif model.__class__.__name__ == "ConceptVCNet":
             # run test_repetition times to get the average:
-            H2_test_list, x_prime_list, y_prime_list = [], [], []
+            H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
             for _ in range(test_repetitions):
                 H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
                 x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
                 H2_test_list.append(H2_test)
                 y_prime_list.append(y_prime)
+                loss_list.append(loss_function_vcnet(H_test, x_reconstructed, q, y_prime, H2_test, X_test, y_test, loss_fn, config=config))
             H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
             x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
             y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+            loss = torch.mean(torch.stack(loss_list), dim=0)
 
     x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
     X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
@@ -927,10 +941,14 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print(f"\n\033[1;91mEvaluation on General Testing Set - Server\033[0m")
     print(f"Counterfactual validity: {validity:.4f}")
     print(f"Counterfactual accuracy: {accuracy:.4f}")
+    print(f"Counterfactual loss: {loss:.4f}")
 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
     print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
+    if args.dataset == "diabetes":
+        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu())
+    else:
+        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
     print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
     mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
     for i in range(n_clients):
@@ -1436,26 +1454,30 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 if model_trained.__class__.__name__ == "Net":
                     #H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
                     # run test_repetitions times and take the mean
-                    H2_test_list, x_prime_list, y_prime_list = [], [], []
+                    H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
                     for _ in range(test_repetitions):
                         H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model_trained(X_test, include=False, mask_init=mask)
                         H2_test_list.append(H2_test)
                         x_prime_list.append(x_prime)
                         y_prime_list.append(y_prime)
+                        loss_list.append(loss_function(H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3, X_test, y_test, loss_fn, config=config))
                     H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
                     x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
                     y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+                    loss = torch.mean(torch.stack(loss_list), dim=0)
                 elif model_trained.__class__.__name__ == "ConceptVCNet":
                     # run test_repetitions times and take the mean
-                    H2_test_list, x_prime_list, y_prime_list = [], [], []
+                    H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
                     for _ in range(test_repetitions):
                         H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
                         x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
                         H2_test_list.append(H2_test)
                         y_prime_list.append(y_prime)
+                        loss_list.append(loss_function_vcnet(H_test, x_reconstructed, q, y_prime, H2_test, X_test, y_test, loss_fn, config=config))
                     H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
                     x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
                     y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+                    loss = torch.mean(torch.stack(loss_list), dim=0)
                     #H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
                     #x_prime = x_reconstructed
 
@@ -1482,10 +1504,14 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
             print("\033[1;91m\nEvaluation on General Testing Set - Server\033[0m")
             print(f"Counterfactual validity client {c+1}: {validity:.4f}")
             print(f"Counterfactual accuracy client {c+1}: {accuracy:.4f}")
+            print(f"Counterfactual loss client {c+1}: {loss:.4f}")
 
             # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
             print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-            mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
+            if args.dataset == "diabetes":
+                mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu())
+            else:
+                mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
             print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
             mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
             for i in range(n_clients):
@@ -1530,7 +1556,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
 
 def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list,
-                               client_id=1, n_clients=3, model=None, data_type="random", config=None, add_name=""):
+                               client_id=1, n_clients=3, model=None, data_type="random", config=None, add_name="", loss_fn=torch.nn.CrossEntropyLoss()):
     dataset = config["dataset"]
     model_name = config["model_name"]
     # check device
@@ -1572,26 +1598,30 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
             if model.__class__.__name__ == "Net":
                 #H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
                 # run test_repetitions times and take the mean
-                H2_test_list, x_prime_list, y_prime_list = [], [], []
+                H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
                 for _ in range(test_repetitions):
                     H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False, mask_init=mask)
                     H2_test_list.append(H2_test)
                     x_prime_list.append(x_prime)
                     y_prime_list.append(y_prime)
+                    loss_list.append(loss_function(H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3, X_test, y_test, loss_fn, config=config))
                 H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
                 x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
                 y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+                loss = torch.mean(torch.stack(loss_list), dim=0)
             elif model.__class__.__name__ == "ConceptVCNet":
                 # run test_repetitions times and take the mean
-                H2_test_list, x_prime_list, y_prime_list = [], [], []
+                H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
                 for _ in range(test_repetitions):
                     H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
                     x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
                     H2_test_list.append(H2_test)
                     y_prime_list.append(y_prime)
+                    loss_list.append(loss_function_vcnet(H_test, x_reconstructed, q, y_prime, H2_test, X_test, y_test, loss_fn, config=config))
                 H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
                 x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
                 y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+                loss = torch.mean(torch.stack(loss_list), dim=0)
 
         x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
         X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
@@ -1612,6 +1642,7 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
         print(f"\033[1;91mEvaluation on Client {client_id} Testing Set:\033[0m")
         print(f"Counterfactual validity: {validity:.4f}")
         print(f"Counterfactual accuracy: {accuracy:.4f}")
+        print(f"Counterfactual loss: {loss:.4f}")
 
         # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
         print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
