@@ -71,6 +71,11 @@ args = parser.parse_args()
 
 print(f"\n\n\033[33mAveraging Results - K {args.K}\033[0m")
 
+# create folder
+if not os.path.exists("results_cross_val"):
+    os.makedirs("results_cross_val")
+
+
 # if privacy intrusive centralized learning
 if args.training_type == "privacy_intrusive":
     # get all files
@@ -84,10 +89,6 @@ if args.training_type == "privacy_intrusive":
         rel_prox.append(d["Rel. Proximity"].values)
         # delede file
         os.remove(f"results_fold_{i+1}.xlsx")
-
-    # create folder
-    if not os.path.exists("results_cross_val"):
-        os.makedirs("results_cross_val")
 
     # mean results
     d["Proximity"] = np.mean(prox, axis=0)
@@ -117,10 +118,6 @@ if args.training_type == "centralized":
             # delede file
             os.remove(f"results_fold_{i+1}_{client_id}.xlsx")
 
-        # create folder
-        if not os.path.exists("results_cross_val"):
-            os.makedirs("results_cross_val")
-
         # mean results
         d["Proximity"] = np.mean(prox, axis=0)
         d["Hamming"] = np.mean(hamm, axis=0)
@@ -149,10 +146,6 @@ if args.training_type == "federated":
         # delede file
         os.remove(f"results_fold_{i+1}.xlsx")
 
-    # create folder
-    if not os.path.exists("results_cross_val"):
-        os.makedirs("results_cross_val")
-
     # mean results
     d["Proximity"] = np.mean(prox, axis=0)
     d["Hamming"] = np.mean(hamm, axis=0)
@@ -180,10 +173,6 @@ if args.training_type == "federated":
                 rel_prox.append(d["Rel. Proximity"].values)
                 # delede file
                 os.remove(f"results_fold_{i+1}_personalization_{client_id}.xlsx")
-
-            # create folder
-            if not os.path.exists("results_cross_val"):
-                os.makedirs("results_cross_val")
 
             # mean results
             d["Proximity"] = np.mean(prox, axis=0)
