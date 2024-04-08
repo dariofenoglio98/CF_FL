@@ -13,6 +13,8 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 import argparse
+import warnings
+warnings.filterwarnings('ignore')
 
 
 
@@ -125,7 +127,6 @@ import copy
 # Function to calculate Euclidean distances between centroids
 def centroid_distances(centroids0, centroids1):
     N = len(centroids0)
-    print(f"N: {N}")
     distances = np.zeros((N, N))
     for i in range(N):
         for j in range(N):
@@ -373,4 +374,3 @@ inverted_client('data/df_breast_cluster_1')
 inverted_client('data/df_breast_cluster_2')
 inverted_client('data/df_diabetes_cluster_1')
 inverted_client('data/df_diabetes_cluster_2')
-
