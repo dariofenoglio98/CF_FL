@@ -946,7 +946,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
     print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
     if args.dataset == "diabetes":
-        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu())
+        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-30000].cpu(), H2_test, y_train_tot[:-30000].cpu())
     else:
         mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
     print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
@@ -1017,7 +1017,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
         os.makedirs(config['history_folder'] + f"server_{data_type}/")
 
     # save to csv
-    data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
+    # data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
 
     # Creating the DataFrame
     df = pd.DataFrame(df)
@@ -1029,6 +1029,8 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
         for n in range(1, n_clients+1):
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, 
                                     client_id=n, n_clients=n_clients, model=model, data_type=data_type, config=config)
+    
+    return df
 
  # visualize examples
 def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random", dataset="diabetes", config=None):
@@ -1449,6 +1451,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
     model_freezed = freeze_params(model, config["to_freeze"])
 
     # local training and evaluation
+    df_list = []
     for c in range(n_clients):
         print(f"\n\n\033[1;33mClient {c+1}\033[0m")
         # create folder 
@@ -1614,9 +1617,12 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
             df = pd.DataFrame(df)
             df.set_index('Label', inplace=True)
             df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
+            df_list.append(df)
 
             # client specific evaluation 
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
+
+    return df_list
 
 # 
 def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list,

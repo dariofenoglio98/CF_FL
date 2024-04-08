@@ -5,11 +5,6 @@ import argparse
 import os
 
 
-n_clients_per_dataset = {
-    'diabetes': 3,
-    'breast': 3,
-    'synthetic': 20
-}
 
 # main
 def main()->None:
@@ -41,11 +36,25 @@ def main()->None:
         choices=['net','vcnet', 'predictor'],
         help="Specifies the model to be trained",
     )
+    parser.add_argument(
+        "--fold",
+        type=int,
+        choices=range(1, 20),
+        default=0,
+        help="Specifies the current fold of the cross-validation, if 0 no cross-validation is used",
+    )
+    parser.add_argument(
+        "--n_clients",
+        type=int,
+        default=5,
+        help="Specifies the number of clients to be used for training and evaluation",
+    )
     args = parser.parse_args()
-    args.n_clients = n_clients_per_dataset[args.dataset]
+    
 
     # print model
-    print(f"\n\n\033[33mModel: {args.model}\033[0m")
+    print(f"\n\n\033[33mPrivacy Intrusive Centralized Learning\033[0m")
+    print(f"Model: {args.model}")
 
     # check gpu and set manual seed
     device = utils.check_gpu(manual_seed=True)
@@ -105,8 +114,9 @@ def main()->None:
         utils.evaluation_central_test(args, best_model_round=None, model=model_network, model_path=model_path, config=config)
         
         # Evaluate distance with all training sets
-        utils.evaluate_distance(args, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=True, client_id=client_id, centralized=True, add_name="privacy_intrusive_CL")
-
+        df_excel = utils.evaluate_distance(args, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=False, client_id=client_id, centralized=True, add_name="privacy_intrusive_CL")
+        if args.fold != 0:
+            df_excel.to_excel(f"results_fold_{args.fold}.xlsx")
 
 
 if __name__ == "__main__":

@@ -48,6 +48,13 @@ def main()->None:
         default=0,
         help="Specifies if global predictor is used (1) or not (0)",
     )
+    parser.add_argument(
+        "--fold",
+        type=int,
+        choices=range(1, 20),
+        default=0,
+        help="Specifies the current fold of the cross-validation, if 0 no cross-validation is used",
+    )
     args = parser.parse_args()
 
     # print model
@@ -108,7 +115,9 @@ def main()->None:
             utils.evaluation_central_test(args, best_model_round=None, model=model_network, model_path=model_path, config=config)
             
             # Evaluate distance with all training sets
-            utils.evaluate_distance(args, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=True, client_id=client_id, centralized=True, add_name=add_name)
+            df_excel = utils.evaluate_distance(args, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=False, client_id=client_id, centralized=True, add_name=add_name)
+            if args.fold != 0:
+                df_excel.to_excel(f"results_fold_{args.fold}_{client_id}.xlsx")
 
 
 

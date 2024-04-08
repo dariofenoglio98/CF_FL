@@ -157,6 +157,13 @@ def main() -> None:
         choices=["", 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"],
         help="Specifies the attack type to be used",
     )
+    parser.add_argument(
+        "--fold",
+        type=int,
+        choices=range(0, 20),
+        default=0,
+        help="Specifies the current fold of the cross-validation, if 0 no cross-validation is used",
+    )
     args = parser.parse_args()
 
     # Start time
@@ -213,7 +220,9 @@ def main() -> None:
         utils.evaluation_central_test(args, best_model_round=best_loss_round, model=model, config=config)
         
         # Evaluate distance with all training sets
-        utils.evaluate_distance(args, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=True)
+        df_excel = utils.evaluate_distance(args, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=False)
+        if args.fold != 0:
+            df_excel.to_excel(f"results_fold_{args.fold}.xlsx")
 
     # Print training time in minutes (grey color)
     print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
@@ -225,7 +234,10 @@ def main() -> None:
         # Personalization
         print("\n\n\n\n\033[94mPersonalization\033[0m")
         # Personalization
-        utils.personalization(args, model_fn=model, config=config, best_model_round=best_loss_round)
+        df_excel_list = utils.personalization(args, model_fn=model, config=config, best_model_round=best_loss_round)
+        if args.fold != 0:
+            for i in range(args.n_clients):
+                df_excel_list[i].to_excel(f"results_fold_{args.fold}_personalization_{i+1}.xlsx")
 
         # Print training time in minutes (grey color)
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
