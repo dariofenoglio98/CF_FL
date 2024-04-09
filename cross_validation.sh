@@ -28,7 +28,7 @@ for i in $(seq 1 $K); do
     elif [ "$training_type" == "centralized" ]; then
         python centralized_learning.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients --glob_pred 0
     elif [ "$training_type" == "federated" ]; then
-        bash run.sh --model $model --data_type $data_type --n_rounds $n_rounds --dataset $dataset --n_clients $n_clients --n_attackers $n_attackers --attack_type $attack_type --pers $pers --fold $i
+        bash run.sh --model "$model" --data_type "$data_type" --n_rounds "$n_rounds" --dataset "$dataset" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --pers "$pers" --fold "$i"
         sleep 2    
     else
         echo -e "\033[1;31mTraining type not recognized\033[0m"
