@@ -72,7 +72,7 @@ class FlowerClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         self.set_parameters(parameters)
         if self.attack_type in ["None", "DP_flip", "DP_random", "DP_inverted_loss"]:
-            model_trained, train_loss, val_loss, acc, acc_prime, acc_val = self.train_fn(
+            model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
                 self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
                 self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
         elif self.attack_type == "MP_gradient":

@@ -233,7 +233,6 @@ def main() -> None:
         start_time = time.time()
         # Personalization
         print("\n\n\n\n\033[94mPersonalization\033[0m")
-        # Personalization
         df_excel_list = utils.personalization(args, model_fn=model, config=config, best_model_round=best_loss_round)
         if args.fold != 0:
             for i in range(args.n_clients):

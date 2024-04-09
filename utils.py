@@ -318,11 +318,12 @@ def loss_function_vcnet(H, x_reconstructed, q, y_prime, H2, X_train, y_train, lo
     return loss
 
 # train vcnet
-def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
+def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None, models_list=False):
     train_loss = list()
     val_loss = list()
     train_acc = list()
     val_acc = list()
+    model_list = list()
     best_loss = 1000
 
     for epoch in range(1, n_epochs+1):
@@ -349,7 +350,6 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
             val_loss.append(loss_val.item())
             val_acc.append(acc_val)
             
-        
         if save_best and val_loss[-1] < best_loss:
             best_loss = val_loss[-1]
             model_best = model
@@ -357,11 +357,14 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
         if epoch % 50 == 0: # and print_info:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
                 epoch, n_epochs, loss.item(), acc*100, acc_prime*100, loss_val.item(), acc_val*100, acc_prime_val*100))
+        
+        if models_list:
+            model_list.append(copy.deepcopy(model))
 
     if save_best:
-        return model_best, train_loss, val_loss, train_acc, acc_prime, val_acc
+        return model_best, train_loss, val_loss, train_acc, acc_prime, val_acc, model_list
     else:  
-        return model, train_loss, val_loss, acc, acc_prime, acc_val
+        return model, train_loss, val_loss, acc, acc_prime, acc_val, model_list
 
 def loss_function(H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3, X_train, y_train, loss_fn, config=None, print_info=False):
         loss_task = loss_fn(H, y_train)
@@ -391,12 +394,13 @@ def loss_function(H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_pri
         
 
 # train our model
-def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
+def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None, models_list=False):
     train_loss = list()
     train_acc = list()
     val_loss = list()
     val_acc = list()
     best_loss = 1000
+    model_list = list()
 
     for epoch in range(1, n_epochs+1):
         model.train()
@@ -429,11 +433,14 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         if epoch % 50 == 0: # and print_info:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
                 epoch, n_epochs, loss.item(), acc*100, acc_prime*100, loss_val.item(), acc_val*100, acc_prime_val*100))
+        
+        if models_list:
+            model_list.append(copy.deepcopy(model))
     
     if save_best:
-        return model_best, train_loss, val_loss, train_acc, acc_prime, val_acc
+        return model_best, train_loss, val_loss, train_acc, acc_prime, val_acc, model_list
     else:
-        return model, train_loss, val_loss, acc, acc_prime, acc_val
+        return model, train_loss, val_loss, acc, acc_prime, acc_val, model_list
 
 # evaluate vcnet
 def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train, config=None):
@@ -468,8 +475,8 @@ def evaluate_vcnet(model, X_test, y_test, loss_fn, X_train, y_train, config=None
     return loss_test.item(), acc_test, validity, proximity, hamming_distance, euclidean_distance, iou, var
 
 # train predictor
-def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None):
-    acc_train,loss_train, acc_val, loss_val = [], [], [], []
+def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None, models_list=False):
+    acc_train,loss_train, acc_val, loss_val, model_list = [], [], [], [], []
     best_loss = 1000
     for epoch in range(n_epochs):
         model.train()
@@ -493,11 +500,14 @@ def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n
         if save_best and loss_val[-1] < best_loss:
             best_loss = loss_val[-1]
             model_best = model
+        
+        if models_list:
+            model_list.append(copy.deepcopy(model))
 
     if save_best:
-        return model_best, loss_train, loss_val, acc_train, 0, acc_val
+        return model_best, loss_train, loss_val, acc_train, 0, acc_val, model_list
     else:
-        return model, loss_train, loss_val, acc_train, 0, acc_val
+        return model, loss_train, loss_val, acc_train, 0, acc_val, model_list
 
 # evaluate our model
 def evaluate(model, X_test, y_test, loss_fn, X_train, y_train, config=None):
@@ -704,7 +714,7 @@ def evaluation_central_test_predictor(args, best_model_round=1, model_path=None,
     data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL.csv")
     return y, acc
 
-def server_side_evaluation(X_test, y_test, model=None, config=None): # not efficient to load every time the dataset
+def server_side_evaluation(X_test, y_test, model=None, config=None): 
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -745,7 +755,7 @@ def server_side_evaluation(X_test, y_test, model=None, config=None): # not effic
 
             return client_metrics
         
-def aggregate_metrics(client_data, server_round, data_type, dataset, config):
+def aggregate_metrics(client_data, server_round, data_type, dataset, config, add_name=""):
     # if predictor 
     if isinstance(client_data[list(client_data.keys())[0]], float):
         pass
@@ -778,9 +788,8 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config):
             os.makedirs(f"results/{model_name}/{dataset}/{data_type}")
 
         # save errors and common changes
-        
-        np.save(f"results/{model_name}/{dataset}/{data_type}/errors_{server_round}.npy", errors_pca)
-        np.save(f"results/{model_name}/{dataset}/{data_type}/common_changes_{server_round}.npy", common_changes_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/errors_{server_round}{add_name}.npy", errors_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/common_changes_{server_round}{add_name}.npy", common_changes_pca)
 
         # IoU feature changed
         for i in client_data.keys():
@@ -1429,19 +1438,9 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
     X_train_rescaled_tot, y_train_tot = (torch.cat(X_train_rescaled), torch.cat(y_train_list))
 
     # load data
-    #df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
-    df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
-    if dataset == "breast":
-        df_test = df_test.drop(columns=["Unnamed: 0"])
-    # Dataset split
-    X = df_test.drop('Labels', axis=1)
-    y = df_test['Labels']
-
+    X_test, y_test = load_data_test(data_type=data_type, dataset=dataset)
     # scale data
     X_train = min_max_scaler(X_train_rescaled_tot.cpu().numpy(), dataset=dataset)
-    X_test = min_max_scaler(X.values, dataset=dataset)
-    X_test = torch.Tensor(X_test).float().to(device)
-    y_test = torch.LongTensor(y.values).to(device)
 
     # load model
     model = model_fn(config).to(device)
@@ -1451,6 +1450,9 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
     model_freezed = freeze_params(model, config["to_freeze"])
 
     # local training and evaluation
+    semantic_metrics_list = {}
+    for ep in range(1, config["n_epochs_personalization"]+1):
+        semantic_metrics_list[ep] = {}
     df_list = []
     for c in range(n_clients):
         print(f"\n\n\033[1;33mClient {c+1}\033[0m")
@@ -1463,9 +1465,13 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
         loss_fn = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(model_trained.parameters(), lr=config["learning_rate_personalization"], momentum=0.9)
         # train
-        model_trained, train_loss, val_loss, acc, acc_prime, acc_val = train_fn(
+        model_trained, train_loss, val_loss, acc, acc_prime, acc_val, model_list = train_fn(
                 model_trained, loss_fn, optimizer, X_train_list[c], y_train_list[c], X_val_list[c],
-                y_val_list[c], n_epochs=config["n_epochs_personalization"], print_info=False, config=config, save_best=True)
+                y_val_list[c], n_epochs=config["n_epochs_personalization"], print_info=False, config=config, save_best=True, models_list=True)
+
+        # semantic evaluation during personalization 
+        for ep, m in enumerate(model_list):
+            semantic_metrics_list[ep+1][c] = server_side_evaluation(X_test, y_test, model=m, config=config)
 
         # evaluate
         model_trained.eval()
@@ -1621,6 +1627,10 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
 
             # client specific evaluation 
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
+
+    # aggregate semantic metrics
+    for ep in range(1, config["n_epochs_personalization"]+1):
+        aggregate_metrics(semantic_metrics_list[ep], ep, data_type, dataset, config, add_name="_personalization")
 
     return df_list
 
@@ -1970,7 +1980,7 @@ config_tests = {
             "lambda5": 0.000001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 10,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
@@ -1995,7 +2005,7 @@ config_tests = {
             "lambda2": 10,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 10,
             "decoder_w": ["decoder"],
             "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
@@ -2012,7 +2022,7 @@ config_tests = {
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 10,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "to_freeze": ["fc1", "fc2", "fc3"],
             "output_round": False,
@@ -2035,12 +2045,16 @@ config_tests = {
             "checkpoint_folder": "checkpoints/synthetic/net/",
             "history_folder": "histories/synthetic/net/",
             "image_folder": "images/synthetic/net/",
-            "input_dim": 3,
+            "input_dim": 2,
+            # "output_dim": 3,
             "output_dim": 2,
             "drop_prob": 0.3,
             "mask": torch.nn.Parameter(torch.Tensor([0,0]), requires_grad=False),
-            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0]).bool(), requires_grad=False),
-            "mask_evaluation": torch.Tensor([0,0,0]),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0]),
+            # "mask": torch.nn.Parameter(torch.Tensor([0,0,0]), requires_grad=False),
+            # "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0]).bool(), requires_grad=False),
+            # "mask_evaluation": torch.Tensor([0,0,0]),
             "lambda1": 3,
             "lambda2": 12,
             "lambda3": 3,
@@ -2063,12 +2077,16 @@ config_tests = {
             "checkpoint_folder": "checkpoints/synthetic/vcnet/",
             "history_folder": "histories/synthetic/vcnet/",
             "image_folder": "images/synthetic/vcnet/",
-            "input_dim": 3,
+            "input_dim": 2,
+            # "output_dim": 3,
             "output_dim": 2,
             "drop_prob": 0.3,
-            "mask": torch.nn.Parameter(torch.Tensor([0,0,0]), requires_grad=False),
-            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0]).bool(), requires_grad=False),
-            "mask_evaluation": torch.Tensor([0,0,0]),
+            "mask": torch.nn.Parameter(torch.Tensor([0,0]), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0,0]).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0,0]),
+            # "mask": torch.nn.Parameter(torch.Tensor([0,0,0]), requires_grad=False),
+            # "binary_feature": torch.nn.Parameter(torch.Tensor([0,0,0]).bool(), requires_grad=False),
+            # "mask_evaluation": torch.Tensor([0,0,0]),
             "lambda1": 2,
             "lambda2": 10,
             "learning_rate": 0.01,
@@ -2086,7 +2104,8 @@ config_tests = {
             "checkpoint_folder": "checkpoints/synthetic/predictor/",
             "history_folder": "histories/synthetic/predictor/",
             "image_folder": "images/synthetic/predictor/",
-            "input_dim": 3,
+            "input_dim": 2,
+            # "output_dim": 3,
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
@@ -2095,8 +2114,10 @@ config_tests = {
             "to_freeze": ["fc1", "fc2", "fc3"],
             "output_round": False,
         },
-        "min" : np.array([-7., -5., -7]),
-        "max" : np.array([7., 5., 7.]),
+        "min" : np.array([-5., -5.]),
+        "max" : np.array([5., 5.]),
+        # "min" : np.array([-7., -5., -7]),
+        # "max" : np.array([7., 5., 7.]),
         
     }
 }

@@ -10,9 +10,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import random as rmd
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 import argparse
+from sklearn.cluster import KMeans
+import copy
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -23,6 +26,7 @@ warnings.filterwarnings('ignore')
 args = argparse.ArgumentParser(description='Split the dataset into N institutions')
 args.add_argument('--n_clients', type=int, default=5, help='Number of clients to create')
 args.add_argument('--seed', type=int, default=1, help='Random seed')
+args.add_argument('--synthetic_features', type=int, default='2', help='Number of features in the synthetic dataset')
 args = args.parse_args()
 
 print(f"\n\n\033[33mData creation\033[0m")
@@ -116,14 +120,6 @@ random_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
 # ### Cluster based Subdivision
 
 # In[59]:
-
-
-from sklearn.cluster import KMeans
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-import copy
-
 # Function to calculate Euclidean distances between centroids
 def centroid_distances(centroids0, centroids1):
     N = len(centroids0)
@@ -374,3 +370,275 @@ inverted_client('data/df_breast_cluster_1')
 inverted_client('data/df_breast_cluster_2')
 inverted_client('data/df_diabetes_cluster_1')
 inverted_client('data/df_diabetes_cluster_2')
+
+
+
+
+## Synthetic dataset
+N_clients = 10
+N_samples = 20000
+ratio = 0.2
+
+def create_points(n):
+    # set seed for reproducibility
+    np.random.seed(args.seed)                                            ### IT WAS 42
+    data = np.random.uniform(-5, 5, (n, 2))
+    data = data[(((data[:, 0] > 0.2).astype(float) + (data[:, 0] < -0.2).astype(float)) * ((data[:, 1] > 0.2).astype(float) + (data[:, 1] < -0.2).astype(float))).astype(bool)]
+    y = np.zeros(data.shape[0])
+    # select the one above the line y = -x
+    filter = data[:, 1] > -data[:, 0]
+    y[filter] = 1
+    return data, y
+
+def select_points(data, m, n):
+    # check if m and n are both positive or both negative
+    if (m > 0 and n < 0) or (m < 0 and n > 0):
+        a = data[(data[:,1] > m*data[:,0]) & (data[:,1] > n*data[:,0])]
+        b = data[(data[:,1] < n*data[:,0]) & (data[:,1] < m*data[:,0])]
+    else:
+        a = data[(data[:,1] > m*data[:,0]) & (data[:,1] < n*data[:,0])]
+        b = data[(data[:,1] > n*data[:,0]) & (data[:,1] < m*data[:,0])]
+    return np.concatenate((a, b))
+
+def divide_space_2f(data, n):
+    client_dict = {}
+    angle = 180/n
+    angles = np.arange(0, 179, angle)
+    # apply the same function to each element of the list
+    m = np.tan(np.radians(angles))
+    # select a random element in m
+    np.random.seed(args.seed)                                           ### IT WAS 42           
+    y_div = np.random.choice(m, 1, replace=False)
+    print(y_div)
+    for i in range(n-1):
+        client_dict[i] = {}
+        client_dict[i]['x'] = select_points(data, m[i], m[i+1])
+        indexes = np.arange(client_dict[i]['x'].shape[0])
+        rmd.shuffle(indexes)
+        client_dict[i]['x'] = client_dict[i]['x'][indexes]
+        client_dict[i]['y'] = np.zeros(len(client_dict[i]['x']))
+        filter = client_dict[i]['x'][:, 1] > y_div*client_dict[i]['x'][:, 0]
+        client_dict[i]['y'][filter] = 1
+    client_dict[n-1] = {}
+    client_dict[n-1]['x'] = select_points(data,  m[n-1], m[0])
+    indexes = np.arange(client_dict[n-1]['x'].shape[0])
+    rmd.shuffle(indexes)
+    client_dict[n-1]['x'] = client_dict[n-1]['x'][indexes]
+    client_dict[n-1]['y'] = np.zeros(len(client_dict[n-1]['x']))
+    filter = client_dict[n-1]['x'][:, 1] > y_div*client_dict[n-1]['x'][:, 0]
+    client_dict[n-1]['y'][filter] = 1
+    return client_dict
+
+def divide_space(data, n, cluster=0):
+    client_dict = {}
+    angle = 180/n
+    angles = np.arange(0, 179, angle)
+    # apply the same function to each element of the list
+    m = np.tan(np.radians(angles))
+    # select a random element in m
+    np.random.seed(args.seed)                                           ### IT WAS 42   
+    y_div = np.random.choice(m, 1, replace=False)
+    print(y_div)
+    for i in range(cluster*n, cluster*n+n-1):
+        client_dict[i] = {}
+        client_dict[i]['x'] = select_points(data, m[i-cluster*n], m[i+1-cluster*n])
+        indexes = np.arange(client_dict[i]['x'].shape[0])
+        rmd.shuffle(indexes)
+        client_dict[i]['x'] = client_dict[i]['x'][indexes]
+        client_dict[i]['y'] = np.zeros(len(client_dict[i]['x']))
+        filter = client_dict[i]['x'][:, 1] > y_div*client_dict[i]['x'][:, 0]
+        client_dict[i]['y'][filter] = 1
+        if cluster == 0:
+            size = int(client_dict[i]['x'].shape[0]/2)
+            random_1 = np.random.uniform(-7, -6, size)
+            random_2 = np.random.uniform(6, 7, client_dict[i]['x'].shape[0]-size)
+            random = np.concatenate((random_1, random_2), axis=0).reshape(-1, 1)
+            client_dict[i]['x'] = np.concatenate((client_dict[i]['x'], random), axis=-1)
+        elif cluster == 1:
+            size = int(client_dict[i]['x'].shape[0]/2)
+            random_1 = np.random.uniform(-7, -6, size)
+            random_2 = np.random.uniform(6, 7, client_dict[i]['x'].shape[0]-size)
+            random = np.concatenate((random_1, random_2), axis=0).reshape(-1, 1)
+            client_dict[i]['x'] = np.concatenate((random, client_dict[i]['x']), axis=-1)
+    client_dict[cluster*n+n-1] = {}
+    client_dict[cluster*n+n-1]['x'] = select_points(data,  m[n-1], m[0])
+    indexes = np.arange(client_dict[cluster*n+n-1]['x'].shape[0])
+    rmd.shuffle(indexes)
+    client_dict[cluster*n+n-1]['x'] = client_dict[cluster*n+n-1]['x'][indexes]
+    client_dict[cluster*n+n-1]['y'] = np.zeros(len(client_dict[cluster*n+n-1]['x']))
+    filter = client_dict[cluster*n+n-1]['x'][:, 1] > y_div*client_dict[cluster*n+n-1]['x'][:, 0]
+    client_dict[cluster*n+n-1]['y'][filter] = 1
+    if cluster == 0:
+        size = int(client_dict[cluster*n+n-1]['x'].shape[0]/2)
+        random_1 = np.random.uniform(-7, -6, size)
+        random_2 = np.random.uniform(6, 7, client_dict[cluster*n+n-1]['x'].shape[0]-size)
+        random = np.concatenate((random_1, random_2), axis=0).reshape(-1, 1)
+        client_dict[cluster*n+n-1]['x'] = np.concatenate((client_dict[cluster*n+n-1]['x'], random), axis=-1)
+    elif cluster == 1:
+        size = int(client_dict[cluster*n+n-1]['x'].shape[0]/2)
+        random_1 = np.random.uniform(-7, -6, size)
+        random_2 = np.random.uniform(6, 7, client_dict[cluster*n+n-1]['x'].shape[0]-size)
+        random = np.concatenate((random_1, random_2), axis=0).reshape(-1, 1)
+        client_dict[cluster*n+n-1]['x'] = np.concatenate((random, client_dict[cluster*n+n-1]['x']), axis=-1)
+    return client_dict
+
+data, y = create_points(int(N_samples*(1-ratio)))
+data_test, y_test = create_points(int(N_samples*ratio))
+
+exp = select_points(data, 2, 3)
+exp_test = select_points(data_test, 2, 3)
+
+if args.synthetic_features == 2:
+    data_dict = divide_space_2f(data, N_clients)
+    data_dict_test = divide_space_2f(data_test, N_clients)
+    # save training
+    for key in data_dict:
+        df = np.concatenate((data_dict[key]['x'], data_dict[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
+        df.to_csv('data/df_synthetic_random_{}.csv'.format(key+1), index=False)
+    # save test
+    list_df = []
+    for key in data_dict_test:
+        df = np.concatenate((data_dict_test[key]['x'], data_dict_test[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
+        list_df.append(df)
+    df = pd.concat(list_df)
+    df.to_csv('data/df_synthetic_random_test.csv', index=False)
+    # save single datasets for testing
+    for key in data_dict_test:
+        df = np.concatenate((data_dict_test[key]['x'], data_dict_test[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
+        df.to_csv('data/df_synthetic_random_test_{}.csv'.format(key+1), index=False)
+        
+    ## Poisoning attack
+    # random data
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_1 = {'x': data[:1500], 'y': y_rand[:1500]}
+    
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_1_test = {'x': data[1500:1870], 'y': y_rand[1500:1870]}
+    
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_2 = {'x': data[2000:3500], 'y': y_rand[2000:3500]}
+
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_2_test = {'x': data[3500:3870], 'y': y_rand[3500:3870]}
+
+    # label flip attack
+    flipped_1 =  {'x': data_dict[9]['x'], 'y': 1-data_dict[9]['y']}
+    flipped_1_test = {'x': data_dict_test[2]['x'], 'y': 1-data_dict_test[9]['y']}
+    flipped_2 =  {'x': data_dict[2]['x'], 'y': 1-data_dict[2]['y']}
+    flipped_2_test = {'x': data_dict_test[2]['x'], 'y': 1-data_dict_test[2]['y']}
+
+    # inverted loss - same as honest
+    inverted_1 =  {'x': data_dict[1]['x'], 'y': data_dict[1]['y']}
+    inverted_1_test = {'x': data_dict_test[1]['x'], 'y': data_dict_test[1]['y']}
+    inverted_2 =  {'x': data_dict[2]['x'], 'y': data_dict[2]['y']}
+    inverted_2_test = {'x': data_dict_test[2]['x'], 'y': data_dict_test[2]['y']}
+
+    # list
+    poisoned_data = [random_1, random_2, flipped_1, flipped_2, inverted_1, inverted_2]
+
+    # save poisoned datasets
+    list_name = ['DP_random_1', 'DP_random_2', 'DP_flip_1', 'DP_flip_2', 'DP_inverted_loss_1', 'DP_inverted_loss_2']
+    for i in range(len(poisoned_data)):
+        df = np.concatenate((poisoned_data[i]['x'], poisoned_data[i]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
+        df.to_csv('data/df_synthetic_random_{}.csv'.format(list_name[i]), index=False)
+else:
+    data_dict = divide_space(data, int(N_clients/2))
+    data_dict_test = divide_space(data_test, int(N_clients/2))
+    data_dict_2 = divide_space(data, int(N_clients/2), cluster=1)
+    data_dict_test_2 = divide_space(data_test, int(N_clients/2), cluster=1)
+    # save training
+    for key in data_dict:
+        df = np.concatenate((data_dict[key]['x'], data_dict[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
+        df.to_csv('data/df_synthetic_random_{}.csv'.format(key+1), index=False)
+    for key in data_dict_2:
+        df = np.concatenate((data_dict_2[key]['x'], data_dict_2[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
+        df.to_csv('data/df_synthetic_random_{}.csv'.format(key+1), index=False)
+    # save test
+    list_df = []
+    for key in data_dict_test:
+        df = np.concatenate((data_dict_test[key]['x'], data_dict_test[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
+        list_df.append(df)
+    for key in data_dict_test_2:
+        df = np.concatenate((data_dict_test_2[key]['x'], data_dict_test_2[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
+        list_df.append(df)
+    df = pd.concat(list_df)
+    df.to_csv('data/df_synthetic_random_test.csv', index=False)
+    # save single datasets for testing
+    for key in data_dict_test:
+        df = np.concatenate((data_dict_test[key]['x'], data_dict_test[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
+        df.to_csv('data/df_synthetic_random_test_{}.csv'.format(key+1), index=False)
+
+    for key in data_dict_test_2:
+        df = np.concatenate((data_dict_test_2[key]['x'], data_dict_test_2[key]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
+        df.to_csv('data/df_synthetic_random_test_{}.csv'.format(key+1), index=False)
+
+    ## Poisoning attack
+    # random data
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_1 = {'x': data[:1500], 'y': y_rand[:1500]}
+    size = int(1500/2)
+    random_add1 = np.random.uniform(-7, -6, size)
+    random_add2 = np.random.uniform(6, 7, 1500-size)
+    random = np.concatenate((random_add1, random_add2), axis=0).reshape(-1, 1)
+    random_1['x'] = np.concatenate((random_1['x'], random), axis=-1)
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_1_test = {'x': data[1500:1870], 'y': y_rand[1500:1870]}
+    size = int((1870-1500)/2)
+    random_add1 = np.random.uniform(-7, -6, size)
+    random_add2 = np.random.uniform(6, 7, (1870-1500)-size)
+    random = np.concatenate((random_add1, random_add2), axis=0).reshape(-1, 1)
+    random_1_test['x'] = np.concatenate((random_1_test['x'], random), axis=-1)
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_2 = {'x': data[2000:3500], 'y': y_rand[2000:3500]}
+    size = int(1500/2)
+    random_add1 = np.random.uniform(-7, -6, size)
+    random_add2 = np.random.uniform(6, 7, 1500-size)
+    random = np.concatenate((random_add1, random_add2), axis=0).reshape(-1, 1)
+    random_2['x'] = np.concatenate((random, random_2['x']), axis=-1)
+    y_rand = y.copy()
+    np.random.shuffle(y_rand)
+    random_2_test = {'x': data[3500:3870], 'y': y_rand[3500:3870]}
+    size = int((1870-1500)/2)
+    random_add1 = np.random.uniform(-7, -6, size)
+    random_add2 = np.random.uniform(6, 7, (1870-1500)-size)
+    random = np.concatenate((random_add1, random_add2), axis=0).reshape(-1, 1)
+    random_2_test['x'] = np.concatenate((random, random_2_test['x']), axis=-1)
+
+    # label flip attack
+    flipped_1 =  {'x': data_dict[9]['x'], 'y': 1-data_dict[9]['y']}
+    flipped_1_test = {'x': data_dict_test[9]['x'], 'y': 1-data_dict_test[9]['y']}
+    flipped_2 =  {'x': data_dict_2[16]['x'], 'y': 1-data_dict_2[16]['y']}
+    flipped_2_test = {'x': data_dict_test_2[16]['x'], 'y': 1-data_dict_test_2[16]['y']}
+
+    # inverted loss - same as honest
+    inverted_1 =  {'x': data_dict[1]['x'], 'y': data_dict[1]['y']}
+    inverted_1_test = {'x': data_dict_test[1]['x'], 'y': data_dict_test[1]['y']}
+    inverted_2 =  {'x': data_dict_2[12]['x'], 'y': data_dict_2[12]['y']}
+    inverted_2_test = {'x': data_dict_test_2[12]['x'], 'y': data_dict_test_2[12]['y']}
+
+    # list
+    poisoned_data = [random_1, random_2, flipped_1, flipped_2, inverted_1, inverted_2]
+
+    # save poisoned datasets
+    list_name = ['DP_random_1', 'DP_random_2', 'DP_flip_1', 'DP_flip_2', 'DP_inverted_loss_1', 'DP_inverted_loss_2']
+    for i in range(len(poisoned_data)):
+        df = np.concatenate((poisoned_data[i]['x'], poisoned_data[i]['y'].reshape(-1, 1)), axis=1)
+        df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
+        df.to_csv('data/df_synthetic_random_{}.csv'.format(list_name[i]), index=False)
