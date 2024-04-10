@@ -10,7 +10,10 @@ import csv
 import numpy as np
 from sklearn.decomposition import PCA
 import copy
-
+import ot
+from tqdm import tqdm
+import imageio
+import seaborn as sns
 
 def update_and_freeze_predictor_weights(model, dataset="synthetic", data_type="random"):
     # load predictor weights
@@ -768,6 +771,12 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, add
         errors = torch.cat(errors, dim=0)
         common_changes = torch.cat(common_changes, dim=0)
 
+        model_name = config["model_name"]
+        # check if path exists
+        if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}"):
+            os.makedirs(f"results/{model_name}/{dataset}/{data_type}")
+
+
         # pca reduction
         pca = PCA(n_components=2, random_state=42)
         # generate random points around 0 with std 0.1 (errors shape)
@@ -780,16 +789,37 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, add
         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
         #common_changes_pca = common_changes.clone().cpu().detach().numpy()
         common_changes_pca = np.zeros((common_changes.shape[0], common_changes.shape[1], 2))
+        dist_matrix = np.zeros((common_changes.shape[0], common_changes.shape[0]))
         for i, el in enumerate(common_changes):
             common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
-        model_name = config["model_name"]
-        # check if path exists
-        if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}"):
-            os.makedirs(f"results/{model_name}/{dataset}/{data_type}")
+        if server_round % 10 == 0:
+            for i, el in enumerate(common_changes_pca):
+                # a = torch.tensor(common_changes_pca[i])
+                a = np.array(common_changes_pca[i])
+                # a, _ = a.sort(dim=0)
+                for j, el2 in enumerate(common_changes_pca):
+                    # b = torch.tensor(common_changes_pca[j])
+                    # b, _ = b.sort(dim=0)
+                    b = np.array(common_changes_pca[j])
+                    # print(a.shape, b.shape)
+                    # kl = kl_divergence(a, b)
+                    # print(kl)
+                    cost_matrix = ot.dist(a, b, metric='euclidean')
 
+                    # Compute the Wasserstein distance
+                    # For simplicity, assume uniform distribution of weights
+                    n = a.shape[0]
+                    w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
+
+                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix)
+                    print(wasserstein_distance)
+                    dist_matrix[i, j] = wasserstein_distance
+                    np.save(f"results/{model_name}/{dataset}/{data_type}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
         # save errors and common changes
         np.save(f"results/{model_name}/{dataset}/{data_type}/errors_{server_round}{add_name}.npy", errors_pca)
         np.save(f"results/{model_name}/{dataset}/{data_type}/common_changes_{server_round}{add_name}.npy", common_changes_pca)
+        
+
 
         # IoU feature changed
         for i in client_data.keys():
@@ -942,7 +972,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     y_prime = y_prime.cpu() 
 
     # plot counterfactuals
-    if x_prime_rescaled.shape[-1] == 3:
+    if x_prime_rescaled.shape[-1] == 2:
         plot_cf(x_prime_rescaled, H2_test, client_id=client_id, config=config, centralised=centralized, data_type=data_type, show=False, add_name=add_name)
 
     validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
@@ -981,65 +1011,67 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print('Variability: {:.2f} \n'.format(var))
 
     # Create a dictionary for the xlsx file
-    df = {
-        'Label': [
-            'Validity', 'Accuracy', 'Loss', 'Distance', 
-            'Distance 1', 'Distance 2', 'Distance 3', 
-            'Distance 4', 'Distance 5', 'Hamming D', 
-            'Euclidean D', 'Relative D', 'IoU', 'Variability'
-        ],
-        'Proximity': [
-            validity, accuracy, loss.cpu().item(), mean_distance, 
-            *mean_distance_list, hamming_distance, 
-            euclidean_distance, relative_distance, iou, var
-        ],
-        'Hamming': [
-            None, None, None, hamming_prox, 
-            *hamming_prox_list, hamming_distance, 
-            None, None, None, None
-        ],
-        'Rel. Proximity': [
-            None, None, None, relative_prox, 
-            *relative_prox_list, None, 
-            None, None, None, None
-        ]
-    }
+    # df = {
+    #     'Label': [
+    #         'Validity', 'Accuracy', 'Loss', 'Distance', 
+    #         'Distance 1', 'Distance 2', 'Distance 3', 
+    #         'Distance 4', 'Distance 5', 'Hamming D', 
+    #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
+    #     ],
+    #     'Proximity': [
+    #         validity, accuracy, loss.cpu().item(), mean_distance, 
+    #         *mean_distance_list, hamming_distance, 
+    #         euclidean_distance, relative_distance, iou, var
+    #     ],
+    #     'Hamming': [
+    #         None, None, None, hamming_prox, 
+    #         *hamming_prox_list, hamming_distance, 
+    #         None, None, None, None
+    #     ],
+    #     'Rel. Proximity': [
+    #         None, None, None, relative_prox, 
+    #         *relative_prox_list, None, 
+    #         None, None, None, None
+    #     ]
+    # }
 
-    # save metrics csv file
-    data = pd.DataFrame({
-        "validity": [validity],
-        "mean_distance": [mean_distance],
-        "hamming_prox": [hamming_prox],
-        "relative_prox": [relative_prox],
-        "mean_distance_one_trainset": [mean_distance_list],
-        "hamming_prox_one_trainset": [hamming_prox_list],
-        "relative_prox_one_trainset": [relative_prox_list],
-        "hamming_distance": [hamming_distance],
-        "euclidean_distance": [euclidean_distance],
-        "relative_distance": [relative_distance],
-        "iou": [iou],
-        "var": [var]
-    })
+    # # save metrics csv file
+    # data = pd.DataFrame({
+    #     "validity": [validity],
+    #     "mean_distance": [mean_distance],
+    #     "hamming_prox": [hamming_prox],
+    #     "relative_prox": [relative_prox],
+    #     "mean_distance_one_trainset": [mean_distance_list],
+    #     "hamming_prox_one_trainset": [hamming_prox_list],
+    #     "relative_prox_one_trainset": [relative_prox_list],
+    #     "hamming_distance": [hamming_distance],
+    #     "euclidean_distance": [euclidean_distance],
+    #     "relative_distance": [relative_distance],
+    #     "iou": [iou],
+    #     "var": [var]
+    # })
 
-    # create folder
-    if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
-        os.makedirs(config['history_folder'] + f"server_{data_type}/")
+    # # create folder
+    # if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+    #     os.makedirs(config['history_folder'] + f"server_{data_type}/")
 
-    # save to csv
-    # data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
+    # # save to csv
+    # # data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
 
-    # Creating the DataFrame
-    df = pd.DataFrame(df)
-    df.set_index('Label', inplace=True)
-    df.to_excel(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.xlsx")
+    # # Creating the DataFrame
+    # df = pd.DataFrame(df)
+    # df.set_index('Label', inplace=True)
+    # df.to_excel(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.xlsx")
 
-    # single client evaluation
-    if spec_client_val:
-        for n in range(1, n_clients+1):
-            client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, 
-                                    client_id=n, n_clients=n_clients, model=model, data_type=data_type, config=config)
+    # # single client evaluation
+    # if spec_client_val:
+    #     for n in range(1, n_clients+1):
+    #         client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, 
+    #                                 client_id=n, n_clients=n_clients, model=model, data_type=data_type, config=config)
     
-    return df
+    # return df
+
+    return None
 
  # visualize examples
 def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random", dataset="diabetes", config=None):
@@ -1533,7 +1565,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
             y_prime = y_prime.cpu() 
 
             # plot counterfactuals
-            if x_prime_rescaled.shape[-1] == 3:
+            if x_prime_rescaled.shape[-1] == 2:
                 plot_cf(x_prime_rescaled, H2_test, client_id=c+1, config=config, data_type=data_type, show=False)
 
             validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
@@ -1571,59 +1603,59 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
             print('Intersection over Union: {:.2f}'.format(iou))
             print('Variability: {:.2f}'.format(var))
 
-            # Create a dictionary for the xlsx file
-            df = {
-                'Label': [
-                    'Validity', 'Accuracy', 'Loss', 'Distance', 
-                    'Distance 1', 'Distance 2', 'Distance 3', 
-                    'Distance 4', 'Distance 5', 'Hamming D', 
-                    'Euclidean D', 'Relative D', 'IoU', 'Variability'
-                ],
-                'Proximity': [
-                    validity, accuracy, loss.cpu().item(), mean_distance, 
-                    *mean_distance_list, hamming_distance, 
-                    euclidean_distance, relative_distance, iou, var
-                ],
-                'Hamming': [
-                    None, None, None, hamming_prox, 
-                    *hamming_prox_list, hamming_distance, 
-                    None, None, None, None
-                ],
-                'Rel. Proximity': [
-                    None, None, None, relative_prox, 
-                    *relative_prox_list, None, 
-                    None, None, None, None
-                ]
-            }
+            # # Create a dictionary for the xlsx file
+            # df = {
+            #     'Label': [
+            #         'Validity', 'Accuracy', 'Loss', 'Distance', 
+            #         'Distance 1', 'Distance 2', 'Distance 3', 
+            #         'Distance 4', 'Distance 5', 'Hamming D', 
+            #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
+            #     ],
+            #     'Proximity': [
+            #         validity, accuracy, loss.cpu().item(), mean_distance, 
+            #         *mean_distance_list, hamming_distance, 
+            #         euclidean_distance, relative_distance, iou, var
+            #     ],
+            #     'Hamming': [
+            #         None, None, None, hamming_prox, 
+            #         *hamming_prox_list, hamming_distance, 
+            #         None, None, None, None
+            #     ],
+            #     'Rel. Proximity': [
+            #         None, None, None, relative_prox, 
+            #         *relative_prox_list, None, 
+            #         None, None, None, None
+            #     ]
+            # }
 
-            # save metrics csv file
-            data = pd.DataFrame({
-                "validity": [validity],
-                "mean_distance": [mean_distance],
-                "hamming_prox": [hamming_prox],
-                "relative_prox": [relative_prox],
-                "mean_distance_one_trainset": [mean_distance_list],
-                "hamming_prox_one_trainset": [hamming_prox_list],
-                "relative_prox_one_trainset": [relative_prox_list],
-                "hamming_distance": [hamming_distance],
-                "euclidean_distance": [euclidean_distance],
-                "relative_distance": [relative_distance],
-                "iou": [iou],
-                "var": [var]
-            })
+            # # save metrics csv file
+            # data = pd.DataFrame({
+            #     "validity": [validity],
+            #     "mean_distance": [mean_distance],
+            #     "hamming_prox": [hamming_prox],
+            #     "relative_prox": [relative_prox],
+            #     "mean_distance_one_trainset": [mean_distance_list],
+            #     "hamming_prox_one_trainset": [hamming_prox_list],
+            #     "relative_prox_one_trainset": [relative_prox_list],
+            #     "hamming_distance": [hamming_distance],
+            #     "euclidean_distance": [euclidean_distance],
+            #     "relative_distance": [relative_distance],
+            #     "iou": [iou],
+            #     "var": [var]
+            # })
 
-            # create folder
-            if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
-                os.makedirs(config['history_folder'] + f"server_{data_type}/")
+            # # create folder
+            # if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+            #     os.makedirs(config['history_folder'] + f"server_{data_type}/")
 
-            # save to csv
-            # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
+            # # save to csv
+            # # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
 
-            # Creating the DataFrame
-            df = pd.DataFrame(df)
-            df.set_index('Label', inplace=True)
-            df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
-            df_list.append(df)
+            # # Creating the DataFrame
+            # df = pd.DataFrame(df)
+            # df.set_index('Label', inplace=True)
+            # df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
+            # df_list.append(df)
 
             # client specific evaluation 
             client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
@@ -1750,29 +1782,29 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
         print('Variability: {:.2f}'.format(var)) 
         
     # Create a dictionary for the xlsx file
-    df = {
-        'Label': [
-            'Validity', 'Accuracy', 'Loss', 'Distance', 
-            'Distance 1', 'Distance 2', 'Distance 3', 
-            'Distance 4', 'Distance 5', 'Hamming D', 
-            'Euclidean D', 'Relative D', 'IoU', 'Variability'
-        ],
-        'Proximity': [
-            validity, accuracy, loss.cpu().item(), mean_distance, 
-            *mean_distance_list, hamming_distance, 
-            euclidean_distance, relative_distance, iou, var
-        ],
-        'Hamming': [
-            None, None, None, hamming_prox, 
-            *hamming_prox_list, hamming_distance, 
-            None, None, None, None
-        ],
-        'Rel. Proximity': [
-            None, None, None, relative_prox, 
-            *relative_prox_list, None, 
-            None, None, None, None
-        ]
-    }
+    # df = {
+    #     'Label': [
+    #         'Validity', 'Accuracy', 'Loss', 'Distance', 
+    #         'Distance 1', 'Distance 2', 'Distance 3', 
+    #         'Distance 4', 'Distance 5', 'Hamming D', 
+    #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
+    #     ],
+    #     'Proximity': [
+    #         validity, accuracy, loss.cpu().item(), mean_distance, 
+    #         *mean_distance_list, hamming_distance, 
+    #         euclidean_distance, relative_distance, iou, var
+    #     ],
+    #     'Hamming': [
+    #         None, None, None, hamming_prox, 
+    #         *hamming_prox_list, hamming_distance, 
+    #         None, None, None, None
+    #     ],
+    #     'Rel. Proximity': [
+    #         None, None, None, relative_prox, 
+    #         *relative_prox_list, None, 
+    #         None, None, None, None
+    #     ]
+    # }
 
     # save metrics csv file
     data = pd.DataFrame({
@@ -1798,9 +1830,117 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
     # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.csv")
 
     # Creating the DataFrame
-    df = pd.DataFrame(df)
-    df.set_index('Label', inplace=True)
-    df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.xlsx")
+    # df = pd.DataFrame(df)
+    # df.set_index('Label', inplace=True)
+    # df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.xlsx")
+
+def load_files(path, start):
+    data = []
+    #ordered list of files in the directory
+    files = []
+    for file in os.listdir(path):
+        if file.startswith(start):
+            file_split = file.split('_')
+            if file_split[-1].split('.')[0] == 'personalization':
+                file_n = int(file_split[-2]) * 1000
+            else:
+                file_n = file_split[-1].split('.')[0]
+            files.append((file, int(file_n)))
+    files.sort(key=lambda x: x[1])
+    for file in files:
+        print(os.path.join(path, file[0]))
+        df = np.load(os.path.join(path, file[0]))
+        data.append(df)
+    return data
+
+def create_gif_aux(data, path, name, n_attackers=0, rounds=1000):
+    if not os.path.exists(os.path.join(path, f'{name}')):
+        os.makedirs(os.path.join(path, f'{name}'))
+    else:
+        for file in os.listdir(os.path.join(path, f'{name}')):
+            os.remove(os.path.join(path, f'{name}', file))
+    images = []
+    data_array = np.concatenate([np.expand_dims(el, axis=0) for el in data])
+    max_x = np.max(data_array[:, :, 0])
+    max_x = max_x + np.abs(max_x)
+    min_x = np.min(data_array[:, :, 0])
+    min_x = min_x - np.abs(min_x)
+    max_y = np.max(data_array[:, :, 1])
+    max_y = max_y + np.abs(max_y)
+    min_y = np.min(data_array[:, :, 1])
+    min_y = min_y - np.abs(min_y)
+    plt.close()
+    for i in tqdm(range(len(data))):
+        if name == 'changes':
+            if i % 10 == 0:
+                for j in range(len(data[i])):
+                    if j >= len(data[i])-n_attackers:
+                        color = 'red'
+                    else:
+                        color = 'black'
+                    sns.kdeplot(x=data[i][j][:, 0], y=data[i][j][:, 1], color=color)
+                    # show legend in all plots
+                # xlim = (min_x, max_x)
+                # ylim = (min_y, max_y)
+                # plt.xlim(xlim)
+                # plt.ylim(ylim)
+                plt.xlabel('x1')
+                plt.ylabel('x2')
+            else:
+                continue
+        elif name == 'matrix':
+            sns.heatmap(data[i], cmap='viridis')
+            plt.xlabel('Clients')
+            plt.ylabel('Clients')
+        else:
+            color = ['black']*(data[i].shape[0]-n_attackers) + ['red']*n_attackers
+            plt.scatter(data[i][:, 0], data[i][:, 1], c=color)
+            # show legend in all plots
+            min_x = min(-0.1, min_x)
+            max_x = max(0.1, max_x)
+            min_y = min(-0.1, min_y)
+            max_y = max(0.1, max_y)
+            xlim = (min_x, max_x)
+            ylim = (min_y, max_y)
+            plt.xlim(xlim)
+            plt.ylim(ylim)
+            plt.xlabel('x1')
+            plt.ylabel('x2')
+        if name == 'matrix':
+            i_tmp = (i + 1)*10
+        else:
+            i_tmp = i + 1
+        if i_tmp >= rounds:
+            plt.title('Iteration {} Personalisation'.format(i_tmp-rounds))
+        else:
+            plt.title('Iteration {}'.format(i_tmp))
+        plt.savefig(os.path.join(path, f'{name}/iteration_{i}.png'))
+        plt.close()
+    files = []
+    for file in os.listdir(os.path.join(path, f'{name}')):
+        file_n = file.split('_')[-1].split('.')[0]
+        files.append((file, int(file_n)))
+    files.sort(key=lambda x: x[1])
+    for file in files:
+        images.append(imageio.imread(os.path.join(path, f'{name}', file[0])))
+    imageio.mimsave(os.path.join(path, f'evolution_{name}.gif'), images, duration=1)
+
+
+def create_gif(args, config):
+    data_type=args.data_type
+    n_attackers=args.n_attackers
+    rounds = args.rounds
+    model = config["model_name"]
+    dataset = config["dataset"]
+    data_changes = load_files(f'results/{model}/{dataset}/{data_type}', 'common_changes')
+    data_errors = load_files(f'results/{model}/{dataset}/{data_type}', 'errors')
+    data_matrix = load_files(f'results/{model}/{dataset}/{data_type}', 'dist_matrix')
+
+    create_gif_aux(data_errors, f'images/{dataset}/{model}/{data_type}', 'error', n_attackers, rounds)
+    create_gif_aux(data_matrix, f'images/{dataset}/{model}/{data_type}', 'matrix', n_attackers, rounds)
+    create_gif_aux(data_changes, f'images/{dataset}/{model}/{data_type}', 'changes', n_attackers, rounds)
+    
+
 
 def plot_cf(x, y, client_id, config, data_type, centralised=False, show=True, add_name=""):
     centralised = "centralized" if centralised else ""
@@ -1817,43 +1957,43 @@ def plot_cf(x, y, client_id, config, data_type, centralised=False, show=True, ad
     y = y.argmax(dim=-1).detach().cpu().numpy()
     plt.scatter(x[:, 0], x[:, 1], c=y, cmap='viridis')
     # plt line to separate classes with the equation y = -0.72654253x
-    # x_line = np.linspace(-5, 5, 100)
-    # y_line = -0.72654253 * x_line
-    # plt.plot(x_line, y_line, color='red')
+    x_line = np.linspace(-5, 5, 100)
+    y_line = -0.72654253 * x_line
+    plt.plot(x_line, y_line, color='red')
     plt.xlabel('x1')
     plt.ylabel('x2')
-    plt.xlim(-7, 7)
+    plt.xlim(-5, 5)
     plt.ylim(-5, 5)
     plt.title('Generated Counterfactuals')
-    plt.savefig(folder + f"counterfactual{add_name}_2D_12.png")
+    plt.savefig(folder + f"counterfactual{add_name}.png")
     plt.clf() 
-    plt.scatter(x[:, 2], x[:, 1], c=y, cmap='viridis')
-    # plt line to separate classes with the equation y = -0.72654253x
-    # x_line = np.linspace(-5, 5, 100)
-    # y_line = -0.72654253 * x_line
-    # plt.plot(x_line, y_line, color='red')
-    plt.xlabel('x3')
-    plt.ylabel('x2')
-    plt.xlim(-7, 7)
-    plt.ylim(-5, 5)
-    plt.title('Generated Counterfactuals')
-    plt.savefig(folder + f"counterfactual{add_name}_2D_12.png")
-    plt.clf() 
-    fig = plt.figure(figsize=plt.figaspect(1))
-    ax = fig.add_subplot(1, 1, 1, projection='3d')
-    ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=y, cmap='viridis')
-    # plt line to separate classes with the equation y = -0.72654253x
-    # x_line = np.linspace(-5, 5, 100)
-    # y_line = -0.72654253 * x_line
-    # plt.plot(x_line, y_line, color='red')
-    ax.set_xlabel('x1')
-    ax.set_ylabel('x2')
-    ax.set_zlabel('x3')
-    ax.set_xlim(-7, 7)
-    ax.set_ylim(-5, 5)
-    ax.set_zlim(-7, 7)
-    ax.set_title('Generated Counterfactuals')
-    plt.savefig(folder + f"counterfactual{add_name}_3D.png")
+    # plt.scatter(x[:, 2], x[:, 1], c=y, cmap='viridis')
+    # # plt line to separate classes with the equation y = -0.72654253x
+    # # x_line = np.linspace(-5, 5, 100)
+    # # y_line = -0.72654253 * x_line
+    # # plt.plot(x_line, y_line, color='red')
+    # plt.xlabel('x3')
+    # plt.ylabel('x2')
+    # plt.xlim(-7, 7)
+    # plt.ylim(-5, 5)
+    # plt.title('Generated Counterfactuals')
+    # plt.savefig(folder + f"counterfactual{add_name}_2D_12.png")
+    # plt.clf() 
+    # fig = plt.figure(figsize=plt.figaspect(1))
+    # ax = fig.add_subplot(1, 1, 1, projection='3d')
+    # ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=y, cmap='viridis')
+    # # plt line to separate classes with the equation y = -0.72654253x
+    # # x_line = np.linspace(-5, 5, 100)
+    # # y_line = -0.72654253 * x_line
+    # # plt.plot(x_line, y_line, color='red')
+    # ax.set_xlabel('x1')
+    # ax.set_ylabel('x2')
+    # ax.set_zlabel('x3')
+    # ax.set_xlim(-7, 7)
+    # ax.set_ylim(-5, 5)
+    # ax.set_zlim(-7, 7)
+    # ax.set_title('Generated Counterfactuals')
+    # plt.savefig(folder + f"counterfactual{add_name}_3D.png")
     if show:
         plt.show()
 

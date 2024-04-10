@@ -169,6 +169,13 @@ def main() -> None:
     # Start time
     start_time = time.time()
 
+    if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}"):
+        os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}")
+    else:
+        # remove the directory and create a new one
+        os.system(f"rm -r results/{args.model}/{args.dataset}/{args.data_type}")
+        os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}")
+
     # model and history folder
     model = utils.models[args.model]
     config = utils.config_tests[args.dataset][args.model]
@@ -240,6 +247,7 @@ def main() -> None:
 
         # Print training time in minutes (grey color)
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
+    utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()

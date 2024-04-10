@@ -106,7 +106,7 @@ def random_split(df, N, file_prefix='df_diabetes', seed=1):
         print(f'Saved: {file_prefix}_random_test_{i}.csv of shape {df_test.shape}')
         # Save the training split
         df_train.to_csv(f'{file_prefix}_random_{i}.csv', index=False)
-        print(f'Saved: {f'{file_prefix}_random_{i}.csv'} of shape {df_train.shape}')
+        print(f'Saved: {file_prefix}_random_{i}.csv of shape {df_train.shape}')
     
     # concatenate the test split of each part
     df_test = pd.concat(test_splits)
@@ -187,7 +187,7 @@ def cluster_by_class_split(df, N, file_prefix='df_diabetes', seed=1):
         print(f'Saved: {file_prefix}_2cluster_test_{i}.csv of shape {df_test.shape}')
         # save training split
         df_train.to_csv(f'{file_prefix}_2cluster_{i}.csv', index=False)
-        print(f'Saved: {f'{file_prefix}_2cluster_{i}.csv'} of shape {df_train.shape} pairs: {c0} and {c1}')
+        print(f'Saved: {file_prefix}_2cluster_{i}.csv of shape {df_train.shape} pairs: {c0} and {c1}')
         i += 1
     
     # concatenate the test split of each part
@@ -255,7 +255,7 @@ def cluster_split(df, N, file_prefix='df_diabetes', seed=1):
         print(f'Saved: {file_prefix}_cluster_test_{i+1}.csv of shape {df_test.shape}')
         # split train
         df_train.to_csv(f'{file_prefix}_cluster_{i+1}.csv', index=False)
-        print(f'Saved: {f'{file_prefix}_cluster_{i+1}.csv'} of shape {df_train.shape}')
+        print(f'Saved: {file_prefix}_cluster_{i+1}.csv of shape {df_train.shape}')
     
     # concatenate the test split of each part
     df_test = pd.concat(test_splits)
@@ -264,7 +264,7 @@ def cluster_split(df, N, file_prefix='df_diabetes', seed=1):
 
 
 cluster_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
-cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+# cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
 
 
 # ## Data Poisoning - Attacker datasets
@@ -375,8 +375,8 @@ inverted_client('data/df_diabetes_cluster_2')
 
 
 ## Synthetic dataset
-N_clients = 10
-N_samples = 20000
+N_clients = args.n_clients
+N_samples = 1000*N_clients
 ratio = 0.2
 
 def create_points(n):
@@ -529,8 +529,8 @@ if args.synthetic_features == 2:
     random_2_test = {'x': data[3500:3870], 'y': y_rand[3500:3870]}
 
     # label flip attack
-    flipped_1 =  {'x': data_dict[9]['x'], 'y': 1-data_dict[9]['y']}
-    flipped_1_test = {'x': data_dict_test[2]['x'], 'y': 1-data_dict_test[9]['y']}
+    flipped_1 =  {'x': data_dict[1]['x'], 'y': 1-data_dict[1]['y']}
+    flipped_1_test = {'x': data_dict_test[1]['x'], 'y': 1-data_dict_test[1]['y']}
     flipped_2 =  {'x': data_dict[2]['x'], 'y': 1-data_dict[2]['y']}
     flipped_2_test = {'x': data_dict_test[2]['x'], 'y': 1-data_dict_test[2]['y']}
 
