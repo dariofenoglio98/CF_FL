@@ -11,21 +11,21 @@ import numpy as np
 # Define Flower client
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, 
-                 client_id, data_type, train_fn, evaluate_fn, attack_type, config):
+                 client_id, data_type, train_fn, evaluate_fn, attack_type, config_model):
         self.model = model
         self.X_train = X_train
         self.y_train = y_train
         self.X_val = X_val
         self.y_val = y_val
-        self.loss_fn = InvertedLoss() if attack_type=="DP_inverted_loss" else torch.nn.CrossEntropyLoss()
+        self.loss_fn = utils.InvertedLoss() if attack_type=="DP_inverted_loss" else torch.nn.CrossEntropyLoss()
         self.optimizer = optimizer
         self.num_examples = num_examples
         self.client_id = client_id 
         self.data_type = data_type
         self.train_fn = train_fn
         self.evaluate_fn = evaluate_fn
-        self.history_folder = config['history_folder']
-        self.config = config
+        self.history_folder = config_model['history_folder']
+        self.config = config_model
         self.attack_type = attack_type
         self.saved_models = {} # Save the parameters of the previous rounds
 
@@ -55,9 +55,9 @@ class FlowerClient(fl.client.NumPyClient):
                     params.append(v.cpu().numpy()) # Use the original parameters for the first round
                     continue
                 else:
-                    epsilon = 0.01
+                    # epsilon = 0.01
                     prev_v = self.saved_models.get(config["current_round"] - 1).get(k).cpu().numpy()
-                    current_v = v.cpu().numpy()
+                    # current_v = v.cpu().numpy()
                     #manipulated_param = current_v - epsilon * (current_v - prev_v)
                     manipulated_param = prev_v
                     params.append(manipulated_param.astype(np.float32))
@@ -99,31 +99,6 @@ class FlowerClient(fl.client.NumPyClient):
             return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "proximity": float(mean_proximity), "validity": float(validity),
                                                             "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
                                                             "iou": float(iou), "variability": float(variability)}
-
-
-class InvertedLoss(torch.nn.Module):
-    def __init__(self):
-        """
-        Inverted loss module that inverts the output of a base loss function.
-        :param base_loss_fn: The base loss function (e.g., nn.CrossEntropyLoss) to be inverted.
-        """
-        super(InvertedLoss, self).__init__()
-        self.base_loss_fn = torch.nn.CrossEntropyLoss()
-
-    def forward(self, output, target):
-        """
-        Forward pass for calculating the inverted loss.
-        :param output: The model's predictions.
-        :param target: The actual labels.
-        :return: The inverted loss.
-        """
-        standard_loss = self.base_loss_fn(output, target)
-        # Ensuring the loss is not too small to avoid division by zero or extremely large inverted loss
-        standard_loss = torch.clamp(standard_loss, min=0.001)
-        inverted_loss = 1.0 / standard_loss
-
-        return inverted_loss
-
 
 # main
 def main()->None:

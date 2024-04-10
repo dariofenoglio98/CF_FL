@@ -10,7 +10,7 @@ import argparse
 # Define Flower client
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, 
-                 client_id, data_type, train_fn, evaluate_fn, config):
+                 client_id, data_type, train_fn, evaluate_fn, config_model):
         self.model = model
         self.X_train = X_train
         self.y_train = y_train
@@ -23,8 +23,8 @@ class FlowerClient(fl.client.NumPyClient):
         self.data_type = data_type
         self.train_fn = train_fn
         self.evaluate_fn = evaluate_fn
-        self.history_folder = config['history_folder']
-        self.config = config
+        self.history_folder = config_model['history_folder']
+        self.config = config_model
 
     def get_parameters(self, config):
         self.model.set_client_id(self.client_id)

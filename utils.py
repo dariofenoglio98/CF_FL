@@ -14,6 +14,8 @@ import ot
 from tqdm import tqdm
 import imageio
 import seaborn as sns
+from collections import OrderedDict
+
 
 def update_and_freeze_predictor_weights(model, dataset="synthetic", data_type="random"):
     # load predictor weights
@@ -1438,9 +1440,97 @@ def freeze_params(model, model_section):
             param.requires_grad = False
     return model
 
+class MP_training:
+    def __init__(self, model, attack_type, n_epochs):
+        self.model = model
+        self.attack_type = attack_type
+        self.n_epochs = n_epochs
+        self.saved_models = {}
+
+    def get_parameters(self, current_epoch):
+        params = []
+        for k, v in self.model.state_dict().items():
+            if k == 'cid':
+                params.append(v.cpu().numpy())
+                continue
+            if k == 'mask' or k=='binary_feature':
+                params.append(v.cpu().numpy())
+                continue
+            # Mimic the actual parameter range by observing the mean and std of each parameter
+            elif self.attack_type == "MP_random":
+                v = v.cpu().numpy()
+                params.append(np.random.normal(loc=np.mean(v), scale=np.std(v), size=v.shape).astype(np.float32))
+            # Introducing random noise to the parameters
+            elif self.attack_type == "MP_noise":
+                v = v.cpu().numpy()
+                params.append(v + np.random.normal(0, 0.4*np.std(v), v.shape).astype(np.float32))
+            # Gradient-based attack - flip the sign of the gradient and scale it by a factor [adaptation of Fall of Empires]
+            elif self.attack_type == "MP_gradient":
+                if current_epoch == 1:
+                    params.append(v.cpu().numpy()) # Use the original parameters for the first round
+                    continue
+                else:
+                    # epsilon = 0.01
+                    prev_v = self.saved_models.get(current_epoch - 1).get(k).cpu().numpy()
+                    current_v = v.cpu().numpy()
+                    #manipulated_param = current_v - epsilon * (current_v - prev_v)
+                    manipulated_param = prev_v
+                    params.append(manipulated_param.astype(np.float32))
+        return params
+
+    def set_parameters(self, parameters):
+        params_dict = zip(self.model.state_dict().keys(), parameters)
+        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        self.model.load_state_dict(state_dict, strict=True)
+
+    def fit(self):
+        model_list = []
+        for epoch in range(1, self.n_epochs+1):
+            # update the current model
+            self.set_parameters(self.get_parameters(epoch))
+
+            # if MP_graidnet, save the model
+            if self.attack_type == "MP_gradient":
+                self.saved_models[epoch] = {k: v.clone() for k, v in self.model.state_dict().items()}
+                # delede previous 3-rounds model
+                if epoch > 3:
+                    del self.saved_models[epoch-3]
+            
+            # add to the list
+            model_list.append(copy.deepcopy(self.model))
+            
+        return model_list
+
+class InvertedLoss(torch.nn.Module):
+    def __init__(self):
+        """
+        Inverted loss module that inverts the output of a base loss function.
+        :param base_loss_fn: The base loss function (e.g., nn.CrossEntropyLoss) to be inverted.
+        """
+        super(InvertedLoss, self).__init__()
+        self.base_loss_fn = torch.nn.CrossEntropyLoss()
+
+    def forward(self, output, target):
+        """
+        Forward pass for calculating the inverted loss.
+        :param output: The model's predictions.
+        :param target: The actual labels.
+        :return: The inverted loss.
+        """
+        standard_loss = self.base_loss_fn(output, target)
+        # Ensuring the loss is not too small to avoid division by zero or extremely large inverted loss
+        standard_loss = torch.clamp(standard_loss, min=0.001)
+        inverted_loss = 1.0 / standard_loss
+
+        return inverted_loss
+
 def personalization(args, model_fn=None, config=None, best_model_round=None):
     # read arguments
-    n_clients=args.n_clients-args.n_attackers 
+    # n_clients=args.n_clients-args.n_attackers
+    n_clients = args.n_clients 
+    n_clients_honest=args.n_clients - args.n_attackers
+    n_attackers=args.n_attackers
+    attack_type=args.attack_type
     data_type=args.data_type 
     dataset=args.dataset
     
@@ -1454,7 +1544,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
 
     # load local clent data
     X_train_rescaled, X_train_list, X_val_list, y_train_list, y_val_list = [], [], [], [], []
-    for i in range(1, n_clients+1):
+    for i in range(1, n_clients_honest+1):
         X_train, y_train, X_val, y_val, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
         #X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
         aux = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset)
@@ -1468,6 +1558,16 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
         y_val_list.append(y_val)
 
     X_train_rescaled_tot, y_train_tot = (torch.cat(X_train_rescaled), torch.cat(y_train_list))
+
+    # load data for attackers
+    X_train_att_list, y_train_att_list, X_val_att_list, y_val_att_list = [], [], [], []
+    for i in range(1, n_attackers+1):
+        X_train, y_train, X_val, y_val, _, _, _ = load_data_malicious(
+            client_id=str(i), device=device, type=data_type, dataset=dataset, attack_type=attack_type)
+        X_train_att_list.append(X_train)
+        y_train_att_list.append(y_train)
+        X_val_att_list.append(X_val)
+        y_val_att_list.append(y_val)
 
     # load data
     X_test, y_test = load_data_test(data_type=data_type, dataset=dataset)
@@ -1487,180 +1587,195 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
         semantic_metrics_list[ep] = {}
     df_list = []
     for c in range(n_clients):
-        print(f"\n\n\033[1;33mClient {c+1}\033[0m")
         # create folder 
         if not os.path.exists(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}"):
             os.makedirs(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}")
         # model and training parameters
         model_trained = copy.deepcopy(model_freezed)
         # model_trained = model_fn(config).to(device)
-        loss_fn = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(model_trained.parameters(), lr=config["learning_rate_personalization"], momentum=0.9)
         # train
-        model_trained, train_loss, val_loss, acc, acc_prime, acc_val, model_list = train_fn(
-                model_trained, loss_fn, optimizer, X_train_list[c], y_train_list[c], X_val_list[c],
-                y_val_list[c], n_epochs=config["n_epochs_personalization"], print_info=False, config=config, save_best=True, models_list=True)
+        if c < n_clients_honest:
+            print(f"\n\n\033[1;33mClient {c+1}\033[0m")
+            loss_fn = torch.nn.CrossEntropyLoss()
+            model_trained, train_loss, val_loss, acc, acc_prime, acc_val, model_list = train_fn(
+                    model_trained, loss_fn, optimizer, X_train_list[c], y_train_list[c], X_val_list[c],
+                    y_val_list[c], n_epochs=config["n_epochs_personalization"], print_info=False, config=config, save_best=True, models_list=True)
+            
+            # evaluate
+            model_trained.eval()
+            if model_trained.__class__.__name__ == "Predictor":
+                with torch.no_grad():
+                    y = model_trained(X_test)
+                    acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
+                print(f"Predictor Accuracy: {acc}")
+                data = pd.DataFrame({
+                    "accuracy": [acc]
+                })
+                # save to csv
+                data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
+            else:
+                mask = config['mask_evaluation']
+                with torch.no_grad():
+                    if model_trained.__class__.__name__ == "Net":
+                        #H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
+                        # run test_repetitions times and take the mean
+                        H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
+                        for _ in range(test_repetitions):
+                            H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model_trained(X_test, include=False, mask_init=mask)
+                            H2_test_list.append(H2_test)
+                            x_prime_list.append(x_prime)
+                            y_prime_list.append(y_prime)
+                            loss_list.append(loss_function(H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3, X_test, y_test, loss_fn, config=config))
+                        H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+                        x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+                        y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+                        loss = torch.mean(torch.stack(loss_list), dim=0)
+                    elif model_trained.__class__.__name__ == "ConceptVCNet":
+                        # run test_repetitions times and take the mean
+                        H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
+                        for _ in range(test_repetitions):
+                            H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
+                            x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
+                            H2_test_list.append(H2_test)
+                            y_prime_list.append(y_prime)
+                            loss_list.append(loss_function_vcnet(H_test, x_reconstructed, q, y_prime, H2_test, X_test, y_test, loss_fn, config=config))
+                        H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
+                        x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
+                        y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
+                        loss = torch.mean(torch.stack(loss_list), dim=0)
+                        #H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
+                        #x_prime = x_reconstructed
+
+                x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
+                X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
+                if config["output_round"]:
+                    x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
+                    X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
+                else:
+                    x_prime_rescaled = torch.Tensor(x_prime_rescaled)
+                    X_test_rescaled = torch.Tensor(X_test_rescaled)
+                
+                # pass to cpus
+                x_prime =  x_prime.cpu()
+                H2_test = H2_test.cpu()
+                y_prime = y_prime.cpu() 
+
+                # plot counterfactuals
+                if x_prime_rescaled.shape[-1] == 2:
+                    plot_cf(x_prime_rescaled, H2_test, client_id=c+1, config=config, data_type=data_type, show=False)
+
+                validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
+                accuracy = (torch.argmax(H_test.cpu(), dim=1) == y_test.cpu()).float().mean().item()
+                print("\033[1;91m\nEvaluation on General Testing Set - Server\033[0m")
+                print(f"Counterfactual validity client {c+1}: {validity:.4f}")
+                print(f"Counterfactual accuracy client {c+1}: {accuracy:.4f}")
+                print(f"Counterfactual loss client {c+1}: {loss:.4f}")
+
+                # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
+                print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
+                if args.dataset == "diabetes":
+                    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu())
+                else:
+                    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
+                print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
+                mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
+                for i in range(n_clients_honest):
+                    mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
+                    print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
+                    mean_distance_list.append(mean_distance_n)
+                    hamming_prox_list.append(hamming_proxn)
+                    relative_prox_list.append(relative_proxn)
+
+                # distance counterfactual
+                hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
+                euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
+                relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
+                iou = intersection_over_union(x_prime_rescaled, X_train_rescaled_tot)
+                var = variability(x_prime_rescaled, X_train_rescaled_tot)
+                print(f"\033[1;32mExtra metrics Evaluation - Counterfactual: Training Set\033[0m")
+                print('Hamming Distance: {:.2f}'.format(hamming_distance))
+                print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
+                print('Relative Distance: {:.2f}'.format(relative_distance))
+                print('Intersection over Union: {:.2f}'.format(iou))
+                print('Variability: {:.2f}'.format(var))
+
+                # # Create a dictionary for the xlsx file
+                # df = {
+                #     'Label': [
+                #         'Validity', 'Accuracy', 'Loss', 'Distance', 
+                #         'Distance 1', 'Distance 2', 'Distance 3', 
+                #         'Distance 4', 'Distance 5', 'Hamming D', 
+                #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
+                #     ],
+                #     'Proximity': [
+                #         validity, accuracy, loss.cpu().item(), mean_distance, 
+                #         *mean_distance_list, hamming_distance, 
+                #         euclidean_distance, relative_distance, iou, var
+                #     ],
+                #     'Hamming': [
+                #         None, None, None, hamming_prox, 
+                #         *hamming_prox_list, hamming_distance, 
+                #         None, None, None, None
+                #     ],
+                #     'Rel. Proximity': [
+                #         None, None, None, relative_prox, 
+                #         *relative_prox_list, None, 
+                #         None, None, None, None
+                #     ]
+                # }
+
+                # # save metrics csv file
+                # data = pd.DataFrame({
+                #     "validity": [validity],
+                #     "mean_distance": [mean_distance],
+                #     "hamming_prox": [hamming_prox],
+                #     "relative_prox": [relative_prox],
+                #     "mean_distance_one_trainset": [mean_distance_list],
+                #     "hamming_prox_one_trainset": [hamming_prox_list],
+                #     "relative_prox_one_trainset": [relative_prox_list],
+                #     "hamming_distance": [hamming_distance],
+                #     "euclidean_distance": [euclidean_distance],
+                #     "relative_distance": [relative_distance],
+                #     "iou": [iou],
+                #     "var": [var]
+                # })
+
+                # # create folder
+                # if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+                #     os.makedirs(config['history_folder'] + f"server_{data_type}/")
+
+                # # save to csv
+                # # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
+
+                # # Creating the DataFrame
+                # df = pd.DataFrame(df)
+                # df.set_index('Label', inplace=True)
+                # df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
+                # df_list.append(df)
+
+                # client specific evaluation 
+                client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients_honest, model=model_trained, data_type=data_type, config=config)
+
+        else:
+            print(f"\n\n\033[1;33mMalicious Client {c+1}\033[0m")
+            if "DP" in attack_type:
+                loss_fn = InvertedLoss() if attack_type=="DP_inverted_loss" else torch.nn.CrossEntropyLoss()
+                model_trained, train_loss, val_loss, acc, acc_prime, acc_val, model_list = train_fn(
+                    model_trained, loss_fn, optimizer, X_train_att_list[c-n_clients_honest], y_train_att_list[c-n_clients_honest], 
+                    X_val_att_list[c-n_clients_honest], y_val_att_list[c-n_clients_honest], n_epochs=config["n_epochs_personalization"], print_info=False, config=config, save_best=True, models_list=True)
+            elif "MP" in attack_type:
+                mp = MP_training(model_trained, attack_type, config["n_epochs_personalization"])
+                model_list = mp.fit()
+            else:
+                raise ValueError("Attack type not recognized")
 
         # semantic evaluation during personalization 
         for ep, m in enumerate(model_list):
             semantic_metrics_list[ep+1][c] = server_side_evaluation(X_test, y_test, model=m, config=config)
 
-        # evaluate
-        model_trained.eval()
-        if model_trained.__class__.__name__ == "Predictor":
-            with torch.no_grad():
-                y = model_trained(X_test)
-                acc = (torch.argmax(y, dim=1) == y_test).float().mean().item()
-            print(f"Predictor Accuracy: {acc}")
-            data = pd.DataFrame({
-                "accuracy": [acc]
-            })
-            # save to csv
-            data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
-        else:
-            mask = config['mask_evaluation']
-            with torch.no_grad():
-                if model_trained.__class__.__name__ == "Net":
-                    #H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime = model_trained(X_test, include=False, mask_init=mask)
-                    # run test_repetitions times and take the mean
-                    H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
-                    for _ in range(test_repetitions):
-                        H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model_trained(X_test, include=False, mask_init=mask)
-                        H2_test_list.append(H2_test)
-                        x_prime_list.append(x_prime)
-                        y_prime_list.append(y_prime)
-                        loss_list.append(loss_function(H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3, X_test, y_test, loss_fn, config=config))
-                    H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
-                    x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
-                    y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
-                    loss = torch.mean(torch.stack(loss_list), dim=0)
-                elif model_trained.__class__.__name__ == "ConceptVCNet":
-                    # run test_repetitions times and take the mean
-                    H2_test_list, x_prime_list, y_prime_list, loss_list = [], [], [], []
-                    for _ in range(test_repetitions):
-                        H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
-                        x_prime_list.append(x_reconstructed) #x_prime = x_reconstructed
-                        H2_test_list.append(H2_test)
-                        y_prime_list.append(y_prime)
-                        loss_list.append(loss_function_vcnet(H_test, x_reconstructed, q, y_prime, H2_test, X_test, y_test, loss_fn, config=config))
-                    H2_test = torch.mean(torch.stack(H2_test_list), dim=0)
-                    x_prime = torch.mean(torch.stack(x_prime_list), dim=0)
-                    y_prime = torch.mean(torch.stack(y_prime_list), dim=0)
-                    loss = torch.mean(torch.stack(loss_list), dim=0)
-                    #H_test, x_reconstructed, q, y_prime, H2_test = model_trained(X_test, include=False, mask_init=mask)
-                    #x_prime = x_reconstructed
-
-            x_prime_rescaled = inverse_min_max_scaler(x_prime.detach().cpu().numpy(), dataset=dataset)
-            X_test_rescaled = inverse_min_max_scaler(X_test.detach().cpu().numpy(), dataset=dataset)
-            if config["output_round"]:
-                x_prime_rescaled = torch.Tensor(np.round(x_prime_rescaled))
-                X_test_rescaled = torch.Tensor(np.round(X_test_rescaled))
-            else:
-                x_prime_rescaled = torch.Tensor(x_prime_rescaled)
-                X_test_rescaled = torch.Tensor(X_test_rescaled)
-            
-            # pass to cpus
-            x_prime =  x_prime.cpu()
-            H2_test = H2_test.cpu()
-            y_prime = y_prime.cpu() 
-
-            # plot counterfactuals
-            if x_prime_rescaled.shape[-1] == 2:
-                plot_cf(x_prime_rescaled, H2_test, client_id=c+1, config=config, data_type=data_type, show=False)
-
-            validity = (torch.argmax(H2_test, dim=-1) == y_prime.argmax(dim=-1)).float().mean().item()
-            accuracy = (torch.argmax(H_test.cpu(), dim=1) == y_test.cpu()).float().mean().item()
-            print("\033[1;91m\nEvaluation on General Testing Set - Server\033[0m")
-            print(f"Counterfactual validity client {c+1}: {validity:.4f}")
-            print(f"Counterfactual accuracy client {c+1}: {accuracy:.4f}")
-            print(f"Counterfactual loss client {c+1}: {loss:.4f}")
-
-            # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
-            print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-            if args.dataset == "diabetes":
-                mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu())
-            else:
-                mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
-            print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
-            mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
-            for i in range(n_clients):
-                mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
-                print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
-                mean_distance_list.append(mean_distance_n)
-                hamming_prox_list.append(hamming_proxn)
-                relative_prox_list.append(relative_proxn)
-
-            # distance counterfactual
-            hamming_distance = (x_prime_rescaled != X_test_rescaled).sum(dim=-1).float().mean().item()
-            euclidean_distance = (torch.abs(x_prime_rescaled - X_test_rescaled)).sum(dim=-1, dtype=torch.float).mean().item()
-            relative_distance = (torch.abs(x_prime_rescaled - X_test_rescaled) / X_test_rescaled.max(dim=0)[0]).sum(dim=-1, dtype=torch.float).mean().item()
-            iou = intersection_over_union(x_prime_rescaled, X_train_rescaled_tot)
-            var = variability(x_prime_rescaled, X_train_rescaled_tot)
-            print(f"\033[1;32mExtra metrics Evaluation - Counterfactual: Training Set\033[0m")
-            print('Hamming Distance: {:.2f}'.format(hamming_distance))
-            print('Euclidean Distance: {:.2f}'.format(euclidean_distance))
-            print('Relative Distance: {:.2f}'.format(relative_distance))
-            print('Intersection over Union: {:.2f}'.format(iou))
-            print('Variability: {:.2f}'.format(var))
-
-            # # Create a dictionary for the xlsx file
-            # df = {
-            #     'Label': [
-            #         'Validity', 'Accuracy', 'Loss', 'Distance', 
-            #         'Distance 1', 'Distance 2', 'Distance 3', 
-            #         'Distance 4', 'Distance 5', 'Hamming D', 
-            #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
-            #     ],
-            #     'Proximity': [
-            #         validity, accuracy, loss.cpu().item(), mean_distance, 
-            #         *mean_distance_list, hamming_distance, 
-            #         euclidean_distance, relative_distance, iou, var
-            #     ],
-            #     'Hamming': [
-            #         None, None, None, hamming_prox, 
-            #         *hamming_prox_list, hamming_distance, 
-            #         None, None, None, None
-            #     ],
-            #     'Rel. Proximity': [
-            #         None, None, None, relative_prox, 
-            #         *relative_prox_list, None, 
-            #         None, None, None, None
-            #     ]
-            # }
-
-            # # save metrics csv file
-            # data = pd.DataFrame({
-            #     "validity": [validity],
-            #     "mean_distance": [mean_distance],
-            #     "hamming_prox": [hamming_prox],
-            #     "relative_prox": [relative_prox],
-            #     "mean_distance_one_trainset": [mean_distance_list],
-            #     "hamming_prox_one_trainset": [hamming_prox_list],
-            #     "relative_prox_one_trainset": [relative_prox_list],
-            #     "hamming_distance": [hamming_distance],
-            #     "euclidean_distance": [euclidean_distance],
-            #     "relative_distance": [relative_distance],
-            #     "iou": [iou],
-            #     "var": [var]
-            # })
-
-            # # create folder
-            # if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
-            #     os.makedirs(config['history_folder'] + f"server_{data_type}/")
-
-            # # save to csv
-            # # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
-
-            # # Creating the DataFrame
-            # df = pd.DataFrame(df)
-            # df.set_index('Label', inplace=True)
-            # df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
-            # df_list.append(df)
-
-            # client specific evaluation 
-            client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients, model=model_trained, data_type=data_type, config=config)
-
     # aggregate semantic metrics
+    print("\n\033[1;33mAggregate Semantic Metrics\033[0m")
     for ep in range(1, config["n_epochs_personalization"]+1):
         aggregate_metrics(semantic_metrics_list[ep], ep, data_type, dataset, config, add_name="_personalization")
 
