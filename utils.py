@@ -753,6 +753,8 @@ def server_side_evaluation(X_test, y_test, model=None, config=None):
             common_changes = (x_prime - X_test)
             # common_changes = (x_prime != X_test).sum(dim=-1).float()
             client_metrics['common_changes'] = common_changes
+            client_metrics['counterfactuals'] = x_prime
+            client_metrics['dataset'] = X_test
 
             # compute set of changed features
             changed_features = torch.unique((x_prime != X_test).detach().cpu(), dim=-1).to(device)
@@ -760,18 +762,24 @@ def server_side_evaluation(X_test, y_test, model=None, config=None):
 
             return client_metrics
         
-def aggregate_metrics(client_data, server_round, data_type, dataset, config, add_name=""):
+def aggregate_metrics(client_data, server_round, data_type, dataset, config, fold=0, add_name=""):
     # if predictor 
     if isinstance(client_data[list(client_data.keys())[0]], float):
         pass
     else: 
         errors = []
         common_changes = []
+        counterfactuals = []
+        samples = []
         for client in sorted(client_data.keys()):
             errors.append(client_data[client]['errors'].unsqueeze(0))
             common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
+            counterfactuals.append(client_data[client]['counterfactuals'].unsqueeze(0))
+            samples.append(client_data[client]['dataset'].unsqueeze(0))
         errors = torch.cat(errors, dim=0)
         common_changes = torch.cat(common_changes, dim=0)
+        counterfactuals = torch.cat(counterfactuals, dim=0)
+        samples = torch.cat(samples, dim=0)
 
         model_name = config["model_name"]
         # check if path exists
@@ -783,9 +791,11 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, add
         pca = PCA(n_components=2, random_state=42)
         # generate random points around 0 with std 0.1 (errors shape)
         torch.manual_seed(42)
-        rand_points = torch.normal(mean=0, std=0.1, size=(errors.shape))
+        rand_points = torch.clamp(torch.normal(mean=0, std=0.1, size=(100, errors.shape[1])), min=0)
+        worst_points = torch.clamp(torch.normal(mean=1, std=0.3, size=(100, errors.shape[1])), max=1)
         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
         errors_pca = pca.transform(errors.cpu().detach().numpy())
+        worst_points_pca = pca.transform(worst_points.cpu().detach().numpy())
         pca = PCA(n_components=2, random_state=42)
         rand_points = torch.normal(mean=0, std=0.1, size=(common_changes.shape[1:]))
         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
@@ -816,10 +826,41 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, add
                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix)
                     print(wasserstein_distance)
                     dist_matrix[i, j] = wasserstein_distance
-                    np.save(f"results/{model_name}/{dataset}/{data_type}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
+                    np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
+        pca = PCA(n_components=2, random_state=42)
+        _ = pca.fit_transform(samples[0].cpu().detach().numpy())
+        counterfactuals_pca = np.zeros((counterfactuals.shape[0], counterfactuals.shape[1], 2))
+        for i, el in enumerate(counterfactuals):
+            counterfactuals_pca[i] = pca.transform(el.cpu().detach().numpy())
+        cf_matrix = np.zeros((counterfactuals_pca.shape[0], counterfactuals_pca.shape[0]))
+        if server_round % 10 == 0:
+            for i, el in enumerate(counterfactuals_pca):
+                # a = torch.tensor(common_changes_pca[i])
+                a = np.array(counterfactuals_pca[i])
+                # a, _ = a.sort(dim=0)
+                for j, el2 in enumerate(counterfactuals_pca):
+                    # b = torch.tensor(common_changes_pca[j])
+                    # b, _ = b.sort(dim=0)
+                    b = np.array(counterfactuals_pca[j])
+                    # print(a.shape, b.shape)
+                    # kl = kl_divergence(a, b)
+                    # print(kl)
+                    cost_matrix = ot.dist(a, b, metric='euclidean')
+
+                    # Compute the Wasserstein distance
+                    # For simplicity, assume uniform distribution of weights
+                    n = a.shape[0]
+                    w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
+
+                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix)
+                    print(wasserstein_distance)
+                    cf_matrix[i, j] = wasserstein_distance
+                    np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/cf_matrix_{server_round}{add_name}.npy", cf_matrix)
         # save errors and common changes
-        np.save(f"results/{model_name}/{dataset}/{data_type}/errors_{server_round}{add_name}.npy", errors_pca)
-        np.save(f"results/{model_name}/{dataset}/{data_type}/common_changes_{server_round}{add_name}.npy", common_changes_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/errors_{server_round}{add_name}.npy", errors_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/worst_points_{server_round}{add_name}.npy", worst_points_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/common_changes_{server_round}{add_name}.npy", common_changes_pca)
+        np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/counterfactuals_{server_round}{add_name}.npy", counterfactuals_pca)
         
 
 
@@ -1968,7 +2009,7 @@ def load_files(path, start):
         data.append(df)
     return data
 
-def create_gif_aux(data, path, name, n_attackers=0, rounds=1000):
+def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=None):
     if not os.path.exists(os.path.join(path, f'{name}')):
         os.makedirs(os.path.join(path, f'{name}'))
     else:
@@ -1976,6 +2017,9 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000):
             os.remove(os.path.join(path, f'{name}', file))
     images = []
     data_array = np.concatenate([np.expand_dims(el, axis=0) for el in data])
+    if worst_errors is not None:
+        worst_errors = np.concatenate([np.expand_dims(el, axis=0) for el in worst_errors])
+        data_array = np.concatenate([data_array, worst_errors], axis=1)
     max_x = np.max(data_array[:, :, 0])
     max_x = max_x + np.abs(max_x)
     min_x = np.min(data_array[:, :, 0])
@@ -1986,7 +2030,7 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000):
     min_y = min_y - np.abs(min_y)
     plt.close()
     for i in tqdm(range(len(data))):
-        if name == 'changes':
+        if name in ['changes', 'counter']:
             if i % 10 == 0:
                 for j in range(len(data[i])):
                     if j >= len(data[i])-n_attackers:
@@ -2003,25 +2047,28 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000):
                 plt.ylabel('x2')
             else:
                 continue
-        elif name == 'matrix':
+        elif name in ['matrix', 'cf_matrix']:
             sns.heatmap(data[i], cmap='viridis')
             plt.xlabel('Clients')
             plt.ylabel('Clients')
         else:
             color = ['black']*(data[i].shape[0]-n_attackers) + ['red']*n_attackers
-            plt.scatter(data[i][:, 0], data[i][:, 1], c=color)
+            for j, _ in enumerate(data[i]):
+                # plt.scatter(data[i][:, 0], data[i][:, 1], c=color)
+                plt.annotate(str(j), (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,10), ha='center', color=color[j])
+            # plt.scatter(worst_errors[i][:, 0], worst_errors[i][:, 1], alpha=0.3)
             # show legend in all plots
             min_x = min(-0.1, min_x)
             max_x = max(0.1, max_x)
             min_y = min(-0.1, min_y)
             max_y = max(0.1, max_y)
-            xlim = (min_x, max_x)
-            ylim = (min_y, max_y)
+            xlim = (-0.2, 1.2)
+            ylim = (-0.2, 1.2)
             plt.xlim(xlim)
             plt.ylim(ylim)
             plt.xlabel('x1')
             plt.ylabel('x2')
-        if name == 'matrix':
+        if name in ['matrix', 'cf_matrix']:
             i_tmp = (i + 1)*10
         else:
             i_tmp = i + 1
@@ -2045,15 +2092,21 @@ def create_gif(args, config):
     data_type=args.data_type
     n_attackers=args.n_attackers
     rounds = args.rounds
+    fold = args.fold
     model = config["model_name"]
     dataset = config["dataset"]
-    data_changes = load_files(f'results/{model}/{dataset}/{data_type}', 'common_changes')
-    data_errors = load_files(f'results/{model}/{dataset}/{data_type}', 'errors')
-    data_matrix = load_files(f'results/{model}/{dataset}/{data_type}', 'dist_matrix')
+    data_changes = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'common_changes')
+    data_errors = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'errors')
+    worst_points = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'worst_points')
+    data_matrix = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'dist_matrix')
+    cf_matrix = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'cf_matrix')
+    counterfactual = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'counterfactuals')
 
-    create_gif_aux(data_errors, f'images/{dataset}/{model}/{data_type}', 'error', n_attackers, rounds)
-    create_gif_aux(data_matrix, f'images/{dataset}/{model}/{data_type}', 'matrix', n_attackers, rounds)
-    create_gif_aux(data_changes, f'images/{dataset}/{model}/{data_type}', 'changes', n_attackers, rounds)
+    create_gif_aux(data_errors, f'images/{dataset}/{model}/{data_type}/{fold}', 'error', n_attackers, rounds)
+    create_gif_aux(data_matrix, f'images/{dataset}/{model}/{data_type}/{fold}', 'matrix', n_attackers, rounds)
+    create_gif_aux(cf_matrix, f'images/{dataset}/{model}/{data_type}/{fold}', 'cf_matrix', n_attackers, rounds)
+    create_gif_aux(data_changes, f'images/{dataset}/{model}/{data_type}/{fold}', 'changes', n_attackers, rounds)
+    create_gif_aux(counterfactual, f'images/{dataset}/{model}/{data_type}/{fold}', 'counter', n_attackers, rounds)
     
 
 
@@ -2171,7 +2224,7 @@ config_tests = {
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
             "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"], 
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "output_round": True,
         },
         "vcnet": {
@@ -2235,13 +2288,13 @@ config_tests = {
             "lambda5": 0.000001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 10,
+            "n_epochs_personalization": 50,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
             "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"], 
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor", "concept_mean_z3_predictor", "concept_var_z3_predictor", "concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "output_round": False,
         },
         "vcnet": {

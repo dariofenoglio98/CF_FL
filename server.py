@@ -36,13 +36,14 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 # Custom strategy to save model after each round
 class SaveModelStrategy(fl.server.strategy.FedAvg):
-    def __init__(self, model, data_type, checkpoint_folder, dataset, model_config, *args, **kwargs):
+    def __init__(self, model, data_type, checkpoint_folder, dataset, fold, model_config, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
         self.data_type = data_type
         self.checkpoint_folder = checkpoint_folder
         self.dataset = dataset
         self.model_config = model_config
+        self.fold = fold
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
@@ -93,7 +94,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             client_data[cid] = client_metrics
         
         # Aggregate metrics
-        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config)
+        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
 
         return aggregated_parameters, aggregated_metrics
 
@@ -169,12 +170,12 @@ def main() -> None:
     # Start time
     start_time = time.time()
 
-    if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}"):
-        os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}")
+    if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}"):
+        os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}")
     else:
         # remove the directory and create a new one
-        os.system(f"rm -r results/{args.model}/{args.dataset}/{args.data_type}")
-        os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}")
+        os.system(f"rm -r results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}")
+        os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}")
 
     # model and history folder
     model = utils.models[args.model]
@@ -194,6 +195,7 @@ def main() -> None:
         data_type=args.data_type,
         checkpoint_folder=config['checkpoint_folder'],
         dataset=args.dataset,
+        fold=args.fold,
         model_config=config,
     )
 
