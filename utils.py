@@ -746,7 +746,7 @@ def server_side_evaluation(X_test, y_test, model=None, config=None):
 
             # compute errors
             p_out = torch.softmax(H_test, dim=-1)
-            errors = torch.abs(p_out[:, 0] - y_test_one_hot[:, 0])
+            errors = p_out[:, 0] - y_test_one_hot[:, 0]
             client_metrics['errors'] = errors
 
             # compute common changes
@@ -784,15 +784,15 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         model_name = config["model_name"]
         # check if path exists
         if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}"):
-            os.makedirs(f"results/{model_name}/{dataset}/{data_type}")
+            os.makedirs(f"results/{model_name}/{dataset}/{data_type}/")
 
 
         # pca reduction
         pca = PCA(n_components=2, random_state=42)
         # generate random points around 0 with std 0.1 (errors shape)
         torch.manual_seed(42)
-        rand_points = torch.clamp(torch.normal(mean=0, std=0.1, size=(100, errors.shape[1])), min=0)
-        worst_points = torch.clamp(torch.normal(mean=1, std=0.3, size=(100, errors.shape[1])), max=1)
+        rand_points = torch.normal(mean=0, std=0.1, size=(100, errors.shape[1]))
+        worst_points = torch.normal(mean=1, std=0.3, size=(100, errors.shape[1]))
         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
         errors_pca = pca.transform(errors.cpu().detach().numpy())
         worst_points_pca = pca.transform(worst_points.cpu().detach().numpy())
@@ -826,7 +826,9 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix)
                     print(wasserstein_distance)
                     dist_matrix[i, j] = wasserstein_distance
-                    np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
+            dist_matrix_median = np.median(dist_matrix)
+            dist_matrix = dist_matrix / dist_matrix_median
+            np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
         pca = PCA(n_components=2, random_state=42)
         _ = pca.fit_transform(samples[0].cpu().detach().numpy())
         counterfactuals_pca = np.zeros((counterfactuals.shape[0], counterfactuals.shape[1], 2))
@@ -855,7 +857,9 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix)
                     print(wasserstein_distance)
                     cf_matrix[i, j] = wasserstein_distance
-                    np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/cf_matrix_{server_round}{add_name}.npy", cf_matrix)
+            cf_matrix_median = np.median(cf_matrix)
+            cf_matrix = cf_matrix / cf_matrix_median
+            np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/cf_matrix_{server_round}{add_name}.npy", cf_matrix)
         # save errors and common changes
         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/errors_{server_round}{add_name}.npy", errors_pca)
         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/worst_points_{server_round}{add_name}.npy", worst_points_pca)
@@ -2062,8 +2066,8 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=No
             max_x = max(0.1, max_x)
             min_y = min(-0.1, min_y)
             max_y = max(0.1, max_y)
-            xlim = (-0.2, 1.2)
-            ylim = (-0.2, 1.2)
+            xlim = (min_x, max_x)
+            ylim = (min_y, max_y)
             plt.xlim(xlim)
             plt.ylim(ylim)
             plt.xlabel('x1')

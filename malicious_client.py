@@ -55,10 +55,10 @@ class FlowerClient(fl.client.NumPyClient):
                     params.append(v.cpu().numpy()) # Use the original parameters for the first round
                     continue
                 else:
-                    # epsilon = 0.01
+                    epsilon = 1
                     prev_v = self.saved_models.get(config["current_round"] - 1).get(k).cpu().numpy()
-                    # current_v = v.cpu().numpy()
-                    #manipulated_param = current_v - epsilon * (current_v - prev_v)
+                    current_v = v.cpu().numpy()
+                    manipulated_param = current_v - epsilon * (current_v - prev_v)
                     manipulated_param = prev_v
                     params.append(manipulated_param.astype(np.float32))
 
