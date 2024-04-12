@@ -806,7 +806,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         for i, el in enumerate(common_changes):
             common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
         # common_changes_pca_tt = common_changes_pca[:1000]
-        if server_round % 10 == 0:
+        if server_round % 200 == 0:
             for i, el in enumerate(common_changes_pca):
                 # a = torch.tensor(common_changes_pca[i])
                 a = np.array(common_changes_pca[i])
@@ -837,7 +837,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         for i, el in enumerate(counterfactuals):
             counterfactuals_pca[i] = pca.transform(el.cpu().detach().numpy())
         cf_matrix = np.zeros((counterfactuals_pca.shape[0], counterfactuals_pca.shape[0]))
-        if server_round % 10 == 0:
+        if server_round % 200 == 0:
             for i, el in enumerate(counterfactuals_pca):
                 # a = torch.tensor(common_changes_pca[i])
                 a = np.array(counterfactuals_pca[i])
