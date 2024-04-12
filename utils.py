@@ -926,6 +926,45 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
     # return len(intersection) / len(union) if len(union) else -1
     return len(intersection) / a.shape[0]
 
+def create_dynamic_df(num_clients, validity, accuracy, loss, mean_distance,
+                      mean_distance_list, hamming_prox, hamming_prox_list,
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list):
+    # Ensure that mean_distance_list and hamming_prox_list have the correct length
+    if len(mean_distance_list) != num_clients or len(hamming_prox_list) != num_clients:
+        raise ValueError("mean_distance_list and hamming_prox_list must match num_clients")
+
+    # Building the 'Label' column
+    label_col = ['Validity', 'Accuracy', 'Loss', 'Distance']
+    label_col += [f'Distance {i+1}' for i in range(num_clients)]
+    label_col += ['Hamming D', 'Euclidean D', 'Relative D', 'IoU', 'Variability']
+
+    # Building the 'Proximity' column
+    proximity_col = [validity, accuracy, loss, mean_distance]
+    proximity_col += mean_distance_list
+    proximity_col += [hamming_distance, euclidean_distance, relative_distance, iou, var]
+
+    # Building the 'Hamming' column
+    hamming_col = [None, None, None, hamming_prox]
+    hamming_col += hamming_prox_list
+    hamming_col += [hamming_distance]
+    hamming_col += [None] * 4  # Adjusting length to match labels
+
+    # Building the 'Rel. Proximity' column
+    relative_prox_col = [None] * 3 
+    relative_prox_col += [relative_distance]
+    relative_prox_col += relative_prox_list
+    relative_prox_col += [None] * 5  # Adjusting length to match labels
+
+    # Creating the DataFrame
+    df = pd.DataFrame({
+        'Label': label_col,
+        'Proximity': proximity_col,
+        'Hamming': hamming_col,
+        'Rel. Proximity': relative_prox_col
+    })
+
+    return df
+
 def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name='', loss_fn=torch.nn.CrossEntropyLoss()):
     # read arguments
     if centralized:
@@ -1060,29 +1099,9 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print('Variability: {:.2f} \n'.format(var))
 
     # Create a dictionary for the xlsx file
-    df = {
-        'Label': [
-            'Validity', 'Accuracy', 'Loss', 'Distance', 
-            'Distance 1', 'Distance 2', 'Distance 3', 
-            'Distance 4', 'Distance 5', 'Hamming D', 
-            'Euclidean D', 'Relative D', 'IoU', 'Variability'
-        ],
-        'Proximity': [
-            validity, accuracy, loss.cpu().item(), mean_distance, 
-            *mean_distance_list, hamming_distance, 
-            euclidean_distance, relative_distance, iou, var
-        ],
-        'Hamming': [
-            None, None, None, hamming_prox, 
-            *hamming_prox_list, hamming_distance, 
-            None, None, None, None
-        ],
-        'Rel. Proximity': [
-            None, None, None, relative_prox, 
-            *relative_prox_list, None, 
-            None, None, None, None
-        ]
-    }
+    df = create_dynamic_df(n_clients, validity, accuracy, loss.cpu().item(), mean_distance,
+                      mean_distance_list, hamming_prox, hamming_prox_list,
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list)
 
     # # save metrics csv file
     # data = pd.DataFrame({
@@ -1746,29 +1765,9 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 print('Variability: {:.2f}'.format(var))
 
                 # Create a dictionary for the xlsx file
-                df = {
-                    'Label': [
-                        'Validity', 'Accuracy', 'Loss', 'Distance', 
-                        'Distance 1', 'Distance 2', 'Distance 3', 
-                        'Distance 4', 'Distance 5', 'Hamming D', 
-                        'Euclidean D', 'Relative D', 'IoU', 'Variability'
-                    ],
-                    'Proximity': [
-                        validity, accuracy, loss.cpu().item(), mean_distance, 
-                        *mean_distance_list, hamming_distance, 
-                        euclidean_distance, relative_distance, iou, var
-                    ],
-                    'Hamming': [
-                        None, None, None, hamming_prox, 
-                        *hamming_prox_list, hamming_distance, 
-                        None, None, None, None
-                    ],
-                    'Rel. Proximity': [
-                        None, None, None, relative_prox, 
-                        *relative_prox_list, None, 
-                        None, None, None, None
-                    ]
-                }
+                df = create_dynamic_df(n_clients_honest, validity, accuracy, loss.cpu().item(), mean_distance,
+                      mean_distance_list, hamming_prox, hamming_prox_list,
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list)
 
                 # # save metrics csv file
                 # data = pd.DataFrame({
@@ -1941,31 +1940,6 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
         print('Intersection over Union: {:.2f}'.format(iou))
         print('Variability: {:.2f}'.format(var)) 
         
-    # Create a dictionary for the xlsx file
-    # df = {
-    #     'Label': [
-    #         'Validity', 'Accuracy', 'Loss', 'Distance', 
-    #         'Distance 1', 'Distance 2', 'Distance 3', 
-    #         'Distance 4', 'Distance 5', 'Hamming D', 
-    #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
-    #     ],
-    #     'Proximity': [
-    #         validity, accuracy, loss.cpu().item(), mean_distance, 
-    #         *mean_distance_list, hamming_distance, 
-    #         euclidean_distance, relative_distance, iou, var
-    #     ],
-    #     'Hamming': [
-    #         None, None, None, hamming_prox, 
-    #         *hamming_prox_list, hamming_distance, 
-    #         None, None, None, None
-    #     ],
-    #     'Rel. Proximity': [
-    #         None, None, None, relative_prox, 
-    #         *relative_prox_list, None, 
-    #         None, None, None, None
-    #     ]
-    # }
-
     # save metrics csv file
     data = pd.DataFrame({
         "validity": [validity],
