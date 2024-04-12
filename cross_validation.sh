@@ -3,14 +3,14 @@
 # Parameters
 model="net"
 data_type="random"  # Options: "cluster", "2cluster", "random"
-n_epochs=1000
-n_rounds=1500
+n_epochs=10
+n_rounds=15
 dataset="synthetic" # Options: "diabetes", "breast", "synthetic"
 n_clients=10
 n_attackers=0  # Adjust this as needed for testing attackers
 attack_type="" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"
 pers=1
-K=5
+K=2
 seeds=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21)
 training_type="privacy_intrusive" # Options: "centralized", "privacy_intrusive" "federated"
 
@@ -47,14 +47,14 @@ python average_results.py  --K $K --model "$model" --data_type "$data_type" --da
 # Parameters
 model="net"
 data_type="random"  # Options: "cluster", "2cluster", "random"
-n_epochs=1000
-n_rounds=1500
+n_epochs=10
+n_rounds=15
 dataset="synthetic" # Options: "diabetes", "breast", "synthetic"
 n_clients=10
 n_attackers=0  # Adjust this as needed for testing attackers
 attack_type="" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"
 pers=1
-K=5
+K=2
 seeds=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21)
 training_type="centralized" # Options: "centralized", "privacy_intrusive" "federated"
 
@@ -91,14 +91,14 @@ python average_results.py  --K $K --model "$model" --data_type "$data_type" --da
 # Parameters
 model="net"
 data_type="random"  # Options: "cluster", "2cluster", "random"
-n_epochs=1000
-n_rounds=1500
+n_epochs=10
+n_rounds=15
 dataset="synthetic" # Options: "diabetes", "breast", "synthetic"
 n_clients=10
 n_attackers=0  # Adjust this as needed for testing attackers
 attack_type="" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"
 pers=1
-K=5
+K=2
 seeds=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21)
 training_type="federated" # Options: "centralized", "privacy_intrusive" "federated"
 
