@@ -4,13 +4,13 @@
 model="net"
 data_type="random"  # Options: "cluster", "2cluster", "random"
 n_epochs=51
-n_rounds=10
+n_rounds=11
 dataset="breast" # Options: "diabetes", "breast", "synthetic"
 n_clients=5
 n_attackers=0  # Adjust this as needed for testing attackers
 attack_type="DP_inverted_loss" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"
 pers=1
-K=3
+K=2
 seeds=(2 3 4 5 6)
 training_type="federated" # Options: "centralized", "privacy_intrusive" "federated"
 

@@ -264,7 +264,7 @@ def cluster_split(df, N, file_prefix='df_diabetes', seed=1):
 
 
 cluster_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
-# cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
 
 
 # ## Data Poisoning - Attacker datasets

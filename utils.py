@@ -782,9 +782,10 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         samples = torch.cat(samples, dim=0)
 
         model_name = config["model_name"]
-        # check if path exists
-        if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}"):
-            os.makedirs(f"results/{model_name}/{dataset}/{data_type}/")
+        # create folder
+        if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}/{fold}"):
+            os.makedirs(f"results/{model_name}/{dataset}/{data_type}/{fold}")
+
 
 
         # pca reduction
@@ -804,6 +805,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         dist_matrix = np.zeros((common_changes.shape[0], common_changes.shape[0]))
         for i, el in enumerate(common_changes):
             common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
+        # common_changes_pca_tt = common_changes_pca[:1000]
         if server_round % 10 == 0:
             for i, el in enumerate(common_changes_pca):
                 # a = torch.tensor(common_changes_pca[i])
@@ -823,7 +825,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     n = a.shape[0]
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
 
-                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix)
+                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
                     print(wasserstein_distance)
                     dist_matrix[i, j] = wasserstein_distance
             dist_matrix_median = np.median(dist_matrix)
@@ -854,7 +856,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     n = a.shape[0]
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
 
-                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix)
+                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
                     print(wasserstein_distance)
                     cf_matrix[i, j] = wasserstein_distance
             cf_matrix_median = np.median(cf_matrix)
@@ -1031,7 +1033,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
     print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-    if args.dataset == "diabetes":
+    if args.dataset == "niente":
         mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-30000].cpu(), H2_test, y_train_tot[:-30000].cpu())
     else:
         mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
@@ -1058,29 +1060,29 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print('Variability: {:.2f} \n'.format(var))
 
     # Create a dictionary for the xlsx file
-    # df = {
-    #     'Label': [
-    #         'Validity', 'Accuracy', 'Loss', 'Distance', 
-    #         'Distance 1', 'Distance 2', 'Distance 3', 
-    #         'Distance 4', 'Distance 5', 'Hamming D', 
-    #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
-    #     ],
-    #     'Proximity': [
-    #         validity, accuracy, loss.cpu().item(), mean_distance, 
-    #         *mean_distance_list, hamming_distance, 
-    #         euclidean_distance, relative_distance, iou, var
-    #     ],
-    #     'Hamming': [
-    #         None, None, None, hamming_prox, 
-    #         *hamming_prox_list, hamming_distance, 
-    #         None, None, None, None
-    #     ],
-    #     'Rel. Proximity': [
-    #         None, None, None, relative_prox, 
-    #         *relative_prox_list, None, 
-    #         None, None, None, None
-    #     ]
-    # }
+    df = {
+        'Label': [
+            'Validity', 'Accuracy', 'Loss', 'Distance', 
+            'Distance 1', 'Distance 2', 'Distance 3', 
+            'Distance 4', 'Distance 5', 'Hamming D', 
+            'Euclidean D', 'Relative D', 'IoU', 'Variability'
+        ],
+        'Proximity': [
+            validity, accuracy, loss.cpu().item(), mean_distance, 
+            *mean_distance_list, hamming_distance, 
+            euclidean_distance, relative_distance, iou, var
+        ],
+        'Hamming': [
+            None, None, None, hamming_prox, 
+            *hamming_prox_list, hamming_distance, 
+            None, None, None, None
+        ],
+        'Rel. Proximity': [
+            None, None, None, relative_prox, 
+            *relative_prox_list, None, 
+            None, None, None, None
+        ]
+    }
 
     # # save metrics csv file
     # data = pd.DataFrame({
@@ -1098,27 +1100,25 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     #     "var": [var]
     # })
 
-    # # create folder
-    # if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
-    #     os.makedirs(config['history_folder'] + f"server_{data_type}/")
+    # create folder
+    if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+        os.makedirs(config['history_folder'] + f"server_{data_type}/")
 
-    # # save to csv
-    # # data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
+    # save to csv
+    # data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
 
-    # # Creating the DataFrame
-    # df = pd.DataFrame(df)
-    # df.set_index('Label', inplace=True)
-    # df.to_excel(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.xlsx")
+    # Creating the DataFrame
+    df = pd.DataFrame(df)
+    df.set_index('Label', inplace=True)
+    df.to_excel(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.xlsx")
 
-    # # single client evaluation
-    # if spec_client_val:
-    #     for n in range(1, n_clients+1):
-    #         client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, 
-    #                                 client_id=n, n_clients=n_clients, model=model, data_type=data_type, config=config)
+    # single client evaluation
+    if spec_client_val:
+        for n in range(1, n_clients+1):
+            client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, 
+                                    client_id=n, n_clients=n_clients, model=model, data_type=data_type, config=config)
     
-    # return df
-
-    return None
+    return df
 
  # visualize examples
 def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescaled, data_type="random", dataset="diabetes", config=None):
@@ -1719,7 +1719,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
 
                 # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
                 print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-                if args.dataset == "diabetes":
+                if args.dataset == "niente":
                     mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu())
                 else:
                     mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
@@ -1745,30 +1745,30 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 print('Intersection over Union: {:.2f}'.format(iou))
                 print('Variability: {:.2f}'.format(var))
 
-                # # Create a dictionary for the xlsx file
-                # df = {
-                #     'Label': [
-                #         'Validity', 'Accuracy', 'Loss', 'Distance', 
-                #         'Distance 1', 'Distance 2', 'Distance 3', 
-                #         'Distance 4', 'Distance 5', 'Hamming D', 
-                #         'Euclidean D', 'Relative D', 'IoU', 'Variability'
-                #     ],
-                #     'Proximity': [
-                #         validity, accuracy, loss.cpu().item(), mean_distance, 
-                #         *mean_distance_list, hamming_distance, 
-                #         euclidean_distance, relative_distance, iou, var
-                #     ],
-                #     'Hamming': [
-                #         None, None, None, hamming_prox, 
-                #         *hamming_prox_list, hamming_distance, 
-                #         None, None, None, None
-                #     ],
-                #     'Rel. Proximity': [
-                #         None, None, None, relative_prox, 
-                #         *relative_prox_list, None, 
-                #         None, None, None, None
-                #     ]
-                # }
+                # Create a dictionary for the xlsx file
+                df = {
+                    'Label': [
+                        'Validity', 'Accuracy', 'Loss', 'Distance', 
+                        'Distance 1', 'Distance 2', 'Distance 3', 
+                        'Distance 4', 'Distance 5', 'Hamming D', 
+                        'Euclidean D', 'Relative D', 'IoU', 'Variability'
+                    ],
+                    'Proximity': [
+                        validity, accuracy, loss.cpu().item(), mean_distance, 
+                        *mean_distance_list, hamming_distance, 
+                        euclidean_distance, relative_distance, iou, var
+                    ],
+                    'Hamming': [
+                        None, None, None, hamming_prox, 
+                        *hamming_prox_list, hamming_distance, 
+                        None, None, None, None
+                    ],
+                    'Rel. Proximity': [
+                        None, None, None, relative_prox, 
+                        *relative_prox_list, None, 
+                        None, None, None, None
+                    ]
+                }
 
                 # # save metrics csv file
                 # data = pd.DataFrame({
@@ -1786,18 +1786,18 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 #     "var": [var]
                 # })
 
-                # # create folder
-                # if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
-                #     os.makedirs(config['history_folder'] + f"server_{data_type}/")
+                # create folder
+                if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
+                    os.makedirs(config['history_folder'] + f"server_{data_type}/")
 
-                # # save to csv
-                # # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
+                # save to csv
+                # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
 
-                # # Creating the DataFrame
-                # df = pd.DataFrame(df)
-                # df.set_index('Label', inplace=True)
-                # df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
-                # df_list.append(df)
+                # Creating the DataFrame
+                df = pd.DataFrame(df)
+                df.set_index('Label', inplace=True)
+                df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.xlsx")
+                df_list.append(df)
 
                 # client specific evaluation 
                 client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_tot, y_train_list, client_id=c+1, n_clients=n_clients_honest, model=model_trained, data_type=data_type, config=config)
@@ -2099,6 +2099,9 @@ def create_gif(args, config):
     fold = args.fold
     model = config["model_name"]
     dataset = config["dataset"]
+    # create folder
+    if not os.path.exists(f'images/{dataset}/{model}/{data_type}/{fold}'):
+        os.makedirs(f'images/{dataset}/{model}/{data_type}/{fold}')
     data_changes = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'common_changes')
     data_errors = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'errors')
     worst_points = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'worst_points')
@@ -2222,7 +2225,7 @@ config_tests = {
             "lambda5": 0.000001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 25,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
@@ -2247,11 +2250,11 @@ config_tests = {
             "lambda2": 10,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5, 
+            "n_epochs_personalization": 25, 
             "decoder_w": ["decoder"],
             "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "output_round": True,
         },
         "predictor": {
@@ -2264,7 +2267,7 @@ config_tests = {
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 25,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "to_freeze": ["fc1", "fc2", "fc3"],
             "output_round": True,
@@ -2292,7 +2295,7 @@ config_tests = {
             "lambda5": 0.000001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 50,
+            "n_epochs_personalization": 25,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
@@ -2317,11 +2320,11 @@ config_tests = {
             "lambda2": 10,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 10,
+            "n_epochs_personalization": 25,
             "decoder_w": ["decoder"],
             "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "output_round": False,
         },
         "predictor": {
@@ -2334,7 +2337,7 @@ config_tests = {
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 10,
+            "n_epochs_personalization": 25,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "to_freeze": ["fc1", "fc2", "fc3"],
             "output_round": False,
@@ -2374,13 +2377,13 @@ config_tests = {
             "lambda5": 0.001,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 10,
+            "n_epochs_personalization": 25,
             "decoder_w": ["decoder"],
             "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
             "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
             "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5", "concept_mean_predictor", "concept_var_predictor"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "output_round": False,
         },
         "vcnet": {
@@ -2403,11 +2406,11 @@ config_tests = {
             "lambda2": 10,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 25,
             "decoder_w": ["decoder"],
             "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
-            "to_freeze": ["concept_mean_predictor", "concept_var_predictor"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "output_round": False,
         },
         "predictor": {
@@ -2421,7 +2424,7 @@ config_tests = {
             "output_dim": 2,
             "learning_rate": 0.01,
             "learning_rate_personalization": 0.01,
-            "n_epochs_personalization": 5,
+            "n_epochs_personalization": 25,
             "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
             "to_freeze": ["fc1", "fc2", "fc3"],
             "output_round": False,
