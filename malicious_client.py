@@ -48,18 +48,19 @@ class FlowerClient(fl.client.NumPyClient):
             # Introducing random noise to the parameters
             elif self.attack_type == "MP_noise":
                 v = v.cpu().numpy()
-                params.append(v + np.random.normal(0, 0.4*np.std(v), v.shape).astype(np.float32))
+                params.append(v + np.random.normal(0, 0.3*np.std(v), v.shape).astype(np.float32))
             # Gradient-based attack - flip the sign of the gradient and scale it by a factor [adaptation of Fall of Empires]
-            elif self.attack_type == "MP_gradient":
+            elif self.attack_type == "MP_gradient": # Fall of Empires
                 if config["current_round"] == 1:
                     params.append(v.cpu().numpy()) # Use the original parameters for the first round
                     continue
                 else:
-                    epsilon = 1
+                    epsilon = 0.04 # from 0 to 10 --- reverse gradient when epsilon is equal to learning rate
+                    learning_rate = 0.01
                     prev_v = self.saved_models.get(config["current_round"] - 1).get(k).cpu().numpy()
                     current_v = v.cpu().numpy()
-                    manipulated_param = current_v - epsilon * (current_v - prev_v)
-                    manipulated_param = prev_v
+                    gradient = (prev_v - current_v)/learning_rate # precisely mean gradients from all the other clients
+                    manipulated_param = current_v + epsilon * gradient  # apply gradient in the opposite direction
                     params.append(manipulated_param.astype(np.float32))
 
         return params

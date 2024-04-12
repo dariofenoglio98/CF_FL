@@ -826,9 +826,9 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
 
                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
-                    print(wasserstein_distance)
                     dist_matrix[i, j] = wasserstein_distance
             dist_matrix_median = np.median(dist_matrix)
+            # print(dist_matrix_median)
             dist_matrix = dist_matrix / dist_matrix_median
             np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
         pca = PCA(n_components=2, random_state=42)
@@ -857,9 +857,9 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
 
                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
-                    print(wasserstein_distance)
                     cf_matrix[i, j] = wasserstein_distance
             cf_matrix_median = np.median(cf_matrix)
+            # print(cf_matrix_median)
             cf_matrix = cf_matrix / cf_matrix_median
             np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/cf_matrix_{server_round}{add_name}.npy", cf_matrix)
         # save errors and common changes
@@ -2008,12 +2008,12 @@ def load_files(path, start):
             files.append((file, int(file_n)))
     files.sort(key=lambda x: x[1])
     for file in files:
-        print(os.path.join(path, file[0]))
+        # print(os.path.join(path, file[0]))
         df = np.load(os.path.join(path, file[0]))
         data.append(df)
     return data
 
-def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=None):
+def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=None, attack_type=None):
     if not os.path.exists(os.path.join(path, f'{name}')):
         os.makedirs(os.path.join(path, f'{name}'))
     else:
@@ -2089,7 +2089,7 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=No
     files.sort(key=lambda x: x[1])
     for file in files:
         images.append(imageio.imread(os.path.join(path, f'{name}', file[0])))
-    imageio.mimsave(os.path.join(path, f'evolution_{name}.gif'), images, duration=1)
+    imageio.mimsave(os.path.join(path, f'evolution_{name}_{attack_type}_{n_attackers}.gif'), images, duration=1)
 
 
 def create_gif(args, config):
@@ -2100,8 +2100,8 @@ def create_gif(args, config):
     model = config["model_name"]
     dataset = config["dataset"]
     # create folder
-    if not os.path.exists(f'images/{dataset}/{model}/{data_type}/{fold}'):
-        os.makedirs(f'images/{dataset}/{model}/{data_type}/{fold}')
+    if not os.path.exists(f'images/{dataset}/{model}/gifs/{data_type}/{fold}'):
+        os.makedirs(f'images/{dataset}/{model}/gifs/{data_type}/{fold}')
     data_changes = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'common_changes')
     data_errors = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'errors')
     worst_points = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'worst_points')
@@ -2109,11 +2109,11 @@ def create_gif(args, config):
     cf_matrix = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'cf_matrix')
     counterfactual = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'counterfactuals')
 
-    create_gif_aux(data_errors, f'images/{dataset}/{model}/{data_type}/{fold}', 'error', n_attackers, rounds)
-    create_gif_aux(data_matrix, f'images/{dataset}/{model}/{data_type}/{fold}', 'matrix', n_attackers, rounds)
-    create_gif_aux(cf_matrix, f'images/{dataset}/{model}/{data_type}/{fold}', 'cf_matrix', n_attackers, rounds)
-    create_gif_aux(data_changes, f'images/{dataset}/{model}/{data_type}/{fold}', 'changes', n_attackers, rounds)
-    create_gif_aux(counterfactual, f'images/{dataset}/{model}/{data_type}/{fold}', 'counter', n_attackers, rounds)
+    create_gif_aux(data_errors, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'error', n_attackers, rounds, attack_type=args.attack_type)
+    create_gif_aux(data_matrix, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'matrix', n_attackers, rounds, attack_type=args.attack_type)
+    create_gif_aux(cf_matrix, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'cf_matrix', n_attackers, rounds, attack_type=args.attack_type)
+    create_gif_aux(data_changes, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'changes', n_attackers, rounds, attack_type=args.attack_type)
+    create_gif_aux(counterfactual, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'counter', n_attackers, rounds, attack_type=args.attack_type)
     
 
 
