@@ -2,8 +2,12 @@
 import flwr as fl
 import numpy as np
 from typing import List, Tuple, Union, Optional, Dict
-from flwr.common import Parameters, Scalar, Metrics
 from flwr.server.client_proxy import ClientProxy
+from logging import WARNING
+from typing import Callable, Dict, List, Optional, Tuple, Union, Any
+from flwr.common.logger import log
+from flwr.server.strategy.aggregate import aggregate_bulyan, aggregate_krum
+from flwr.server.strategy.fedavg import FedAvg
 from flwr.common import FitRes
 import argparse
 import torch
@@ -12,7 +16,16 @@ import os
 from collections import OrderedDict
 import json
 import time
-
+from flwr.common import (
+    FitRes,
+    Metrics,
+    MetricsAggregationFn,
+    NDArrays,
+    Parameters,
+    Scalar,
+    ndarrays_to_parameters,
+    parameters_to_ndarrays,
+)
 
 
 # Config_client
@@ -34,10 +47,90 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     # Aggregate and return custom metric (weighted average)
     return {"accuracy": sum(accuracies) / sum(examples), "validity": sum(validities) / sum(examples)}
 
-# Custom strategy to save model after each round
-class SaveModelStrategy(fl.server.strategy.FedAvg):
-    def __init__(self, model, data_type, checkpoint_folder, dataset, fold, model_config, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+# BulyanStrategy
+class BulyanStrategy(FedAvg):
+    """Bulyan strategy.
+
+    Implementation based on https://arxiv.org/abs/1802.07927.
+
+    Parameters
+    ----------
+    fraction_fit : float, optional
+        Fraction of clients used during training. Defaults to 1.0.
+    fraction_evaluate : float, optional
+        Fraction of clients used during validation. Defaults to 1.0.
+    min_fit_clients : int, optional
+        Minimum number of clients used during training. Defaults to 2.
+    min_evaluate_clients : int, optional
+        Minimum number of clients used during validation. Defaults to 2.
+    min_available_clients : int, optional
+        Minimum number of total clients in the system. Defaults to 2.
+    num_malicious_clients : int, optional
+        Number of malicious clients in the system. Defaults to 0.
+    evaluate_fn : Optional[Callable[[int, NDArrays, Dict[str, Scalar]], Optional[Tuple[float, Dict[str, Scalar]]]]]
+        Optional function used for validation. Defaults to None.
+    on_fit_config_fn : Callable[[int], Dict[str, Scalar]], optional
+        Function used to configure training. Defaults to None.
+    on_evaluate_config_fn : Callable[[int], Dict[str, Scalar]], optional
+        Function used to configure validation. Defaults to None.
+    accept_failures : bool, optional
+        Whether or not accept rounds containing failures. Defaults to True.
+    initial_parameters : Parameters, optional
+        Initial global model parameters.
+    first_aggregation_rule: Callable
+        Byzantine resilient aggregation rule that is used as the first step of the Bulyan (e.g., Krum)
+    **aggregation_rule_kwargs: Any
+        arguments to the first_aggregation rule
+    """
+
+    # pylint: disable=too-many-arguments,too-many-instance-attributes,too-many-locals
+    def __init__(
+        self,
+        *,
+        fraction_fit: float = 1.0,
+        fraction_evaluate: float = 1.0,
+        min_fit_clients: int = 2,
+        min_evaluate_clients: int = 2,
+        min_available_clients: int = 2,
+        num_malicious_clients: int = 0,
+        evaluate_fn: Optional[
+            Callable[
+                [int, NDArrays, Dict[str, Scalar]],
+                Optional[Tuple[float, Dict[str, Scalar]]],
+            ]
+        ] = None,
+        on_fit_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
+        on_evaluate_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
+        accept_failures: bool = True,
+        initial_parameters: Optional[Parameters] = None,
+        fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        first_aggregation_rule: Callable = aggregate_krum,  # type: ignore
+        model=None,
+        data_type: str = "random", # "random", "cluster", "2cluster"
+        checkpoint_folder: str = "checkpoints/",
+        dataset: str = "diabetes",
+        fold: int = 0,
+        model_config: dict = {},
+        **aggregation_rule_kwargs: Any,
+    ) -> None:
+        super().__init__(
+            fraction_fit=fraction_fit,
+            fraction_evaluate=fraction_evaluate,
+            min_fit_clients=min_fit_clients,
+            min_evaluate_clients=min_evaluate_clients,
+            min_available_clients=min_available_clients,
+            evaluate_fn=evaluate_fn,
+            on_fit_config_fn=on_fit_config_fn,
+            on_evaluate_config_fn=on_evaluate_config_fn,
+            accept_failures=accept_failures,
+            initial_parameters=initial_parameters,
+            fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
+            evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
+        )
+        self.num_malicious_clients = num_malicious_clients
+        self.first_aggregation_rule = first_aggregation_rule
+        self.aggregation_rule_kwargs = aggregation_rule_kwargs
         self.model = model
         self.data_type = data_type
         self.checkpoint_folder = checkpoint_folder
@@ -47,24 +140,53 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
-
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
             os.makedirs(self.checkpoint_folder + f"{self.data_type}")
 
-    # Override aggregate_fit method to add saving functionality
+    def __repr__(self) -> str:
+        """Compute a string representation of the strategy."""
+        rep = f"Bulyan(accept_failures={self.accept_failures})"
+        return rep
+
     def aggregate_fit(
         self,
         server_round: int,
-        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes]],
+        results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate model weights using weighted average and store checkpoint"""
+        """Aggregate fit results using Bulyan."""
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
 
-        # Save model
-        # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
-        aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
+        # Convert results
+        weights_results = [
+            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+            for _, fit_res in results
+        ]
 
+        # Aggregate weights
+        aggregated_parameters = ndarrays_to_parameters(
+            aggregate_bulyan(
+                weights_results,
+                self.num_malicious_clients,
+                self.first_aggregation_rule,
+                **self.aggregation_rule_kwargs,
+            )
+        )
+
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+        if self.fit_metrics_aggregation_fn:
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
+        elif server_round == 1:  # Only log this warning once
+            log(WARNING, "No fit_metrics_aggregation_fn provided")
+
+        # Save the model after each round
         if aggregated_parameters is not None:
 
             print(f"Saving round {server_round} aggregated_parameters...")
@@ -96,7 +218,12 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         # Aggregate metrics
         utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
 
-        return aggregated_parameters, aggregated_metrics
+        return aggregated_parameters, metrics_aggregated
+
+
+
+
+
 
 
 
@@ -182,7 +309,7 @@ def main() -> None:
     config = utils.config_tests[args.dataset][args.model]
 
     # Define strategy
-    strategy = SaveModelStrategy(
+    strategy = BulyanStrategy(
         model=model(config=config), # model to be trained
         min_fit_clients=args.n_clients, # Never sample less than 10 clients for training
         min_evaluate_clients=args.n_clients,  # Never sample less than 5 clients for evaluation
@@ -197,11 +324,12 @@ def main() -> None:
         dataset=args.dataset,
         fold=args.fold,
         model_config=config,
+        to_keep=0,
     )
 
     # Start Flower server for three rounds of federated learning
     history = fl.server.start_server(
-        server_address="0.0.0.0:8080",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
+        server_address="0.0.0.0:8085",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )
