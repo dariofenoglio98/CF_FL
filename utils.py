@@ -965,7 +965,7 @@ def create_dynamic_df(num_clients, validity, accuracy, loss, mean_distance,
 
     return df
 
-def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, add_name='', loss_fn=torch.nn.CrossEntropyLoss()):
+def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name='', loss_fn=torch.nn.CrossEntropyLoss()):
     # read arguments
     # if centralized:
     #     n_clients=args.n_clients

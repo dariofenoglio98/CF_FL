@@ -114,7 +114,7 @@ def main()->None:
         utils.evaluation_central_test(args, best_model_round=None, model=model_network, model_path=model_path, config=config)
         
         # Evaluate distance with all training sets
-        df_excel = utils.evaluate_distance(args, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=False, client_id=client_id, add_name="privacy_intrusive_CL")
+        df_excel = utils.evaluate_distance(args, best_model_round=None, model_fn=model_network, model_path=model_path, config=config, spec_client_val=False, client_id=client_id, centralized=True, add_name="privacy_intrusive_CL")
         if args.fold != 0:
             df_excel.to_excel(f"results_fold_{args.fold}.xlsx")
 
