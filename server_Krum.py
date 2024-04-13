@@ -311,9 +311,9 @@ def main() -> None:
     # Define strategy
     strategy = KrumStrategy(
         model=model(config=config), # model to be trained
-        min_fit_clients=args.n_clients, # Never sample less than 10 clients for training
-        min_evaluate_clients=args.n_clients,  # Never sample less than 5 clients for evaluation
-        min_available_clients=args.n_clients, # Wait until all 10 clients are available
+        min_fit_clients=args.n_clients+args.n_attackers, # Never sample less than 10 clients for training
+        min_evaluate_clients=args.n_clients+args.n_attackers,  # Never sample less than 5 clients for evaluation
+        min_available_clients=args.n_clients+args.n_attackers, # Wait until all 10 clients are available
         fraction_fit=1.0, # Sample 100 % of available clients for training
         fraction_evaluate=1.0, # Sample 100 % of available clients for evaluation
         evaluate_metrics_aggregation_fn=weighted_average,
@@ -330,7 +330,7 @@ def main() -> None:
 
     # Start Flower server for three rounds of federated learning
     history = fl.server.start_server(
-        server_address="0.0.0.0:8080",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
+        server_address="0.0.0.0:8070",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )

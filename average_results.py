@@ -67,6 +67,13 @@ parser.add_argument(
     default='centralized',
     help="Specifies the type of training",
 )
+parser.add_argument(
+    "--defense",
+    type=str,
+    choices=["median", "ours", "krum", "trim", "bulyan"],
+    default="ours",
+    help="Specifies the defense mechanism to be used",
+)
 args = parser.parse_args()
 
 print(f"\n\n\033[33mAveraging Results - K {args.K}\033[0m")
@@ -150,14 +157,14 @@ if args.training_type == "federated":
     d["Proximity"] = np.mean(prox, axis=0)
     d["Hamming"] = np.mean(hamm, axis=0)
     d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
-    d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}.xlsx")
+    d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}.xlsx")
 
     # std results
     d_std = d.copy()
     d_std["Proximity"] = np.std(prox, axis=0)
     d_std["Hamming"] = np.std(hamm, axis=0)
     d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
-    d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}.xlsx")
+    d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}.xlsx")
   
     # personalization
     if args.pers == 1:
@@ -178,14 +185,14 @@ if args.training_type == "federated":
             d["Proximity"] = np.mean(prox, axis=0)
             d["Hamming"] = np.mean(hamm, axis=0)
             d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
-            d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}.xlsx")
+            d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}_{args.defense}.xlsx")
 
             # std results
             d_std = d.copy()
             d_std["Proximity"] = np.std(prox, axis=0)
             d_std["Hamming"] = np.std(hamm, axis=0)
             d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
-            d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}.xlsx")
+            d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}_{args.defense}.xlsx")
         
 
 print("Results saved in results_cross_val folder")

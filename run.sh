@@ -10,6 +10,7 @@ n_attackers=0
 attack_type="DP_inverted_loss"
 pers=0
 fold=0
+defense="median" # Options: "median", "ours", "krum", "trim", "bulyan"
 
 # Process command-line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -23,6 +24,7 @@ while [[ "$#" -gt 0 ]]; do
         --attack_type) attack_type="$2"; shift 2 ;;
         --pers) pers="$2"; shift 2 ;;
         --fold) fold="$2"; shift 2 ;;
+        --defense) defense="$2"; shift 2 ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
 done
@@ -43,9 +45,23 @@ fi
 # pers=1
 # fold=0
 
-echo -e "\n\033[1;36mStarting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
-n_clients_server=$((n_clients+n_attackers))
-python server.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients_server" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+echo -e "\n\033[1;36mStarting server with model: defense $defense, model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
+#n_clients_server=$((n_clients+n_attackers))
+if [ "$defense" == "median" ]; then
+    python server_Median.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+fi
+if [ "$defense" == "ours" ]; then
+    python server.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+fi
+if [ "$defense" == "krum" ]; then
+    python server_Krum.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+fi
+if [ "$defense" == "trim" ]; then
+    python server_TrimMean.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+fi
+if [ "$defense" == "bulyan" ]; then
+    python server_Bulyan.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+fi
 sleep 2  # Sleep for 2s to give the server enough time to start
 
 for i in $(seq 1 $n_clients); do
