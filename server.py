@@ -61,6 +61,26 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Aggregate model weights using weighted average and store checkpoint"""
 
+        # Perform evaluation on the server side on each single client after local training       
+        # for each clients evaluate the model
+        client_data = {}
+        for client, fit_res in results:
+            # Load model
+            params = fl.common.parameters_to_ndarrays(fit_res.parameters)
+            params_dict = zip(self.model.state_dict().keys(), params)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            cid = int(np.round(state_dict['cid'].item()))
+            # print(f"Server-side evaluation of client {cid}")
+            # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
+            self.model.load_state_dict(state_dict, strict=True)
+            # Evaluate the model
+            client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+            client_data[cid] = client_metrics
+        # Aggregate metrics
+        w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        w_dist_norm = utils.normalize(w_dist)
+        w_error_norm = utils.normalize(w_error)
+        w_mix_norm = utils.normalize(w_mix)
         # Save model
         # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
         aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
@@ -77,24 +97,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             # Save the model
             torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
         
-        # Perform evaluation on the server side on each single client after local training       
-        # for each clients evaluate the model
-        client_data = {}
-        for client, fit_res in results:
-            # Load model
-            params = fl.common.parameters_to_ndarrays(fit_res.parameters)
-            params_dict = zip(self.model.state_dict().keys(), params)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            cid = int(np.round(state_dict['cid'].item()))
-            # print(f"Server-side evaluation of client {cid}")
-            # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
-            self.model.load_state_dict(state_dict, strict=True)
-            # Evaluate the model
-            client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
-            client_data[cid] = client_metrics
         
-        # Aggregate metrics
-        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
 
         return aggregated_parameters, aggregated_metrics
 
@@ -223,7 +226,6 @@ def main() -> None:
     except Exception as e:
         print(f"An error occurred: {e}")
 
- 
     # Plot
     best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(args, loss, accuracy, validity, config=config, show=False)
 

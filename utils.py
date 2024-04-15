@@ -761,7 +761,18 @@ def server_side_evaluation(X_test, y_test, model=None, config=None):
             client_metrics['changed_features'] = changed_features
 
             return client_metrics
-        
+    
+def compute_distance_weights(matrix):
+    mean = torch.tensor(matrix).mean(dim=1)
+    return 1 / mean
+
+def compute_error_weights(errors):
+    magnitude = torch.clamp(torch.norm(torch.tensor(errors), dim=1), max=1)
+    return 1 - magnitude + 1e-6
+
+def normalize(vector):
+    return vector / vector.sum()
+    
 def aggregate_metrics(client_data, server_round, data_type, dataset, config, fold=0, add_name=""):
     # if predictor 
     if isinstance(client_data[list(client_data.keys())[0]], float):
@@ -806,7 +817,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         for i, el in enumerate(common_changes):
             common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
         # common_changes_pca_tt = common_changes_pca[:1000]
-        if server_round % 10 == 0:
+        if server_round % 1 == 0:
             for i, el in enumerate(common_changes_pca):
                 # a = torch.tensor(common_changes_pca[i])
                 a = np.array(common_changes_pca[i])
@@ -837,7 +848,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         for i, el in enumerate(counterfactuals):
             counterfactuals_pca[i] = pca.transform(el.cpu().detach().numpy())
         cf_matrix = np.zeros((counterfactuals_pca.shape[0], counterfactuals_pca.shape[0]))
-        if server_round % 10 == 0:
+        if server_round % 1 == 0:
             for i, el in enumerate(counterfactuals_pca):
                 # a = torch.tensor(common_changes_pca[i])
                 a = np.array(counterfactuals_pca[i])
@@ -868,16 +879,19 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/common_changes_{server_round}{add_name}.npy", common_changes_pca)
         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/counterfactuals_{server_round}{add_name}.npy", counterfactuals_pca)
         
+        w_dist = compute_distance_weights(cf_matrix)
+        w_error = compute_error_weights(errors_pca)
+        w_mix = w_dist * w_error
 
+        # # IoU feature changed
+        # for i in client_data.keys():
+        #     # print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")
+        #     for j in client_data.keys():
+        #         if i != j:
+        #             iou = intersection_over_union(client_data[i]['changed_features'], client_data[j]['changed_features'])
+        #             #print(f"IoU between client {i} and client {j}: {iou}")
 
-        # IoU feature changed
-        for i in client_data.keys():
-            # print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")
-            for j in client_data.keys():
-                if i != j:
-                    iou = intersection_over_union(client_data[i]['changed_features'], client_data[j]['changed_features'])
-                    #print(f"IoU between client {i} and client {j}: {iou}")
-
+        return w_dist, w_error, w_mix
 
 
 # distance metrics with training set
