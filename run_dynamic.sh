@@ -4,12 +4,12 @@
 # Parameters
 model="net"
 data_type="random"  # Options: "cluster", "2cluster", "random"
-n_rounds=30
-dataset="breast" # Options: "diabetes", "breast", "synthetic"
+n_rounds=200
+dataset="synthetic" # Options: "diabetes", "breast", "synthetic"
 synthetic_features=2
 n_clients=5
 n_attackers=2  # Adjust this as needed for testing attackers
-attack_type="DP_inverted_loss" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss",
+attack_type="MP_random" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss",
 pers=1
 fold=0
 

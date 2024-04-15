@@ -197,26 +197,32 @@ def main() -> None:
         dataset=args.dataset,
         fold=args.fold,
         model_config=config,
+        accept_failures=False
     )
 
     # Start Flower server for three rounds of federated learning
-    history = fl.server.start_server(
-        server_address="0.0.0.0:8070",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
-        config=fl.server.ServerConfig(num_rounds=args.rounds),
-        strategy=strategy,
-    )
-    # convert history to list
-    loss = [k[1] for k in history.losses_distributed]
-    accuracy = [k[1] for k in history.metrics_distributed['accuracy']]
-    validity = [k[1] for k in history.metrics_distributed['validity']]
+    try:
+        history = fl.server.start_server(
+            server_address="0.0.0.0:8070",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
+            config=fl.server.ServerConfig(num_rounds=args.rounds),
+            strategy=strategy,
+        )
+        # convert history to list
+        loss = [k[1] for k in history.losses_distributed]
+        accuracy = [k[1] for k in history.metrics_distributed['accuracy']]
+        validity = [k[1] for k in history.metrics_distributed['validity']]
 
-    # Save loss and accuracy to a file
-    print(f"Saving metrics to as .json in histories folder...")
-    # # check if folder exists and save metrics
-    if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
-        os.makedirs(config['history_folder'] + f"server_{args.data_type}")
-    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
-        json.dump({'loss': loss, 'accuracy': accuracy}, f)
+        # Save loss and accuracy to a file
+        print(f"Saving metrics to as .json in histories folder...")
+        # # check if folder exists and save metrics
+        if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
+            os.makedirs(config['history_folder'] + f"server_{args.data_type}")
+        with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
+            json.dump({'loss': loss, 'accuracy': accuracy}, f)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
  
     # Plot
     best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(args, loss, accuracy, validity, config=config, show=False)

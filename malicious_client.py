@@ -55,7 +55,7 @@ class FlowerClient(fl.client.NumPyClient):
                     params.append(v.cpu().numpy()) # Use the original parameters for the first round
                     continue
                 else:
-                    epsilon = 0.04 # from 0 to 10 --- reverse gradient when epsilon is equal to learning rate
+                    epsilon = 0.1 # from 0 to 10 --- reverse gradient when epsilon is equal to learning rate
                     learning_rate = 0.01
                     prev_v = self.saved_models.get(config["current_round"] - 1).get(k).cpu().numpy()
                     current_v = v.cpu().numpy()
