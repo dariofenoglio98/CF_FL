@@ -1216,6 +1216,72 @@ def check_gpu(manual_seed=True, print_info=True):
         device = 'cpu'
     return device
 
+def plot_mean_std_metrics(plot_metrics, name):
+    # Initialize dictionaries to store the mean and std of each variable
+    mean_metrics = {}
+    std_metrics = {}
+
+    # Initialize keys in mean and std dictionaries
+    for key in plot_metrics[0]:
+        mean_metrics[key] = []
+        std_metrics[key] = []
+
+    # Calculate mean and std
+    for key in plot_metrics[0]:  # Assuming all dicts have the same keys
+        # Gather data from each entry in plot_metrics for the current key
+        data = [entry[key] for entry in plot_metrics]
+        # Convert list of lists to a numpy array
+        data_array = np.array(data)
+        # Compute the mean and std along the first axis (across dictionaries)
+        mean_metrics[key] = np.mean(data_array, axis=0)
+        std_metrics[key] = np.std(data_array, axis=0)
+
+    # Creating a DataFrame to hold all data points
+    data = {
+        'Iteration': [],
+        'Value': [],
+        'Variable': []
+    }
+
+    # Extract data for plotting
+    for key in plot_metrics[0].keys():
+        for index, metric in enumerate(plot_metrics):
+            for iteration, value in enumerate(metric[key]):
+                data['Iteration'].append(iteration)
+                data['Value'].append(value)
+                data['Variable'].append(key)
+
+    # Convert the dictionary to DataFrame
+    df = pd.DataFrame(data)
+
+    # Set up the plotting
+    sns.set(style="whitegrid")
+
+    # Set the figure size for the plot
+    plt.figure(figsize=(10, 6))
+
+    # Create a line plot with confidence intervals
+    g = sns.lineplot(x="Iteration", y="Value", hue="Variable", style="Variable",
+                    markers=True, dashes=False, data=df, errorbar='sd', palette='deep')
+
+    # Customizing the plot
+    plt.title('Trend of Metrics With Confidence Interval')
+    plt.xlabel('Iteration')
+    plt.ylabel('Metric Value')
+    plt.legend(title='Metric')
+
+    # Set the limits for the y-axis
+    plt.ylim(-0.05, 1.2)
+
+    # Enhance layout
+    plt.tight_layout(pad=1.0)  # Adjust the padding if necessary
+
+    # Save the figure with adjusted bounding box
+    plt.savefig(name+'.png', dpi=300, bbox_inches='tight')
+
+    # Show the plot
+    # plt.show()
+
 # plot and save plot on server side
 def plot_loss_and_accuracy(args, loss, accuracy, validity, config=None, show=True):
     # read args

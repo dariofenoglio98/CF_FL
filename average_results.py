@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import os
 import argparse
+import utils
+import json
 
 
 # get input 
@@ -74,6 +76,12 @@ parser.add_argument(
     default="ours",
     help="Specifies the defense mechanism to be used",
 )
+parser.add_argument(
+    "--n_rounds",
+    type=int,
+    default=20,
+    help="Specifies the number of rounds for federated learning",
+)
 args = parser.parse_args()
 
 print(f"\n\n\033[33mAveraging Results - K {args.K}\033[0m")
@@ -141,8 +149,10 @@ if args.training_type == "centralized":
 # federated
 if args.training_type == "federated":
     # federated learning - server
+    config = utils.config_tests[args.dataset][args.model]
     # get all files
     data = []
+    plot_metrics = []
     prox, hamm, rel_prox = [], [], []
     for i in range(args.K):
         # read
@@ -152,6 +162,13 @@ if args.training_type == "federated":
         rel_prox.append(d["Rel. Proximity"].values)
         # delede file
         os.remove(f"results_fold_{i+1}.xlsx")
+        # read json
+        with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{i+1}.json', 'r') as f:
+            plot_metrics.append(json.load(f))
+            f.close()
+    
+    # plot metrics
+    utils.plot_mean_std_metrics(plot_metrics, config['image_folder']+f'server_side_{args.data_type}/KFold_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_metrics')
 
     # mean results
     d["Proximity"] = np.mean(prox, axis=0)

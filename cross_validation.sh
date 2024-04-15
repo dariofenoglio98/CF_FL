@@ -7,14 +7,14 @@
 model="net"
 data_type="2cluster"  # Options: "cluster", "2cluster", "random"
 n_epochs=10
-n_rounds=51
+n_rounds=25
 dataset="breast" # Options: "diabetes", "breast", "synthetic"
 n_clients=5
-n_attackers=2  # Adjust this as needed for testing attackers
+n_attackers=1  # Adjust this as needed for testing attackers
 attack_type="MP_random" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"
-pers=1
-K=2
-defense="median" # Options: "median", "ours", "krum", "trim", "bulyan"
+pers=0
+K=3
+defense="ours" # Options: "median", "ours", "krum", "trim", "bulyan"
 seeds=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21)
 training_type="federated" # Options: "centralized", "privacy_intrusive" "federated"
 
@@ -40,7 +40,7 @@ for i in $(seq 1 $K); do
 done
 
 # average results
-python average_results.py  --K $K --model "$model" --data_type "$data_type" --dataset "$dataset"  --n_attackers $n_attackers --attack_type "$attack_type" --pers $pers --n_clients $n_clients --training_type "$training_type" --defense "$defense"
+python average_results.py  --K $K --model "$model" --data_type "$data_type" --dataset "$dataset"  --n_attackers $n_attackers --attack_type "$attack_type" --pers $pers --n_clients $n_clients --training_type "$training_type" --defense "$defense" --n_rounds $n_rounds
 wait
 sleep 10
 

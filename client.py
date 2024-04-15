@@ -36,29 +36,43 @@ class FlowerClient(fl.client.NumPyClient):
         self.model.load_state_dict(state_dict, strict=True)
 
     def fit(self, parameters, config):
-        self.set_parameters(parameters)
-        model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
-            self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
-            self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
-        return self.get_parameters(config), self.num_examples["trainset"], {}
+        try: 
+            self.set_parameters(parameters)
+            model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
+                self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
+                self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
+            return self.get_parameters(config), self.num_examples["trainset"], {}
+        except Exception as e:
+            print(f"An error occurred during training of client {self.client_id}: {e}, returning same model") 
+            return self.get_parameters(config), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
         if self.model.__class__.__name__ == "Predictor":
-            loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn, config=self.config)
-            # save loss and accuracy client
-            utils.save_client_metrics(config["current_round"], loss, accuracy, 0, client_id=self.client_id,
-                                    data_type=self.data_type, tot_rounds=config['tot_rounds'], history_folder=self.history_folder)
-            return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(0), "validity": float(0)}
+            try:
+                loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn, config=self.config)
+                # save loss and accuracy client
+                utils.save_client_metrics(config["current_round"], loss, accuracy, 0, client_id=self.client_id,
+                                        data_type=self.data_type, tot_rounds=config['tot_rounds'], history_folder=self.history_folder)
+                return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(0), "validity": float(0)}
+            except Exception as e:
+                print(f"An error occurred during inference of client {self.client_id}: {e}, returning same zero metrics") 
+                return float(10000), self.num_examples["valset"], {"accuracy": float(0), "mean_distance": float(10000), "validity": float(0)}
 
         else:
-            loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = self.evaluate_fn(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train, config=self.config)
-            # save loss and accuracy client
-            utils.save_client_metrics(config["current_round"], loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability,
-                                    self.client_id, self.data_type, config['tot_rounds'], self.history_folder)
-            return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "proximity": float(mean_proximity), "validity": float(validity),
-                                                            "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
-                                                            "iou": float(iou), "variability": float(variability)}
+            try:
+                loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = self.evaluate_fn(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train, config=self.config)
+                # save loss and accuracy client
+                utils.save_client_metrics(config["current_round"], loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability,
+                                        self.client_id, self.data_type, config['tot_rounds'], self.history_folder)
+                return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "proximity": float(mean_proximity), "validity": float(validity),
+                                                                "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
+                                                                "iou": float(iou), "variability": float(variability)}
+            except Exception as e:
+                print(f"An error occurred during inference of client {self.client_id}: {e}, returning same zero metrics") 
+                return float(10000), self.num_examples["valset"], {"accuracy": float(0), "proximity": float(10000), "validity": float(0),
+                                                                "hamming_distance": float(10000), "euclidian_distance": float(10000),
+                                                                "iou": float(0), "variability": float(0)}
 
 
 # main

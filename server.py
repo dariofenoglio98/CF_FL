@@ -63,28 +63,29 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         # Perform evaluation on the server side on each single client after local training       
         # for each clients evaluate the model
-        client_data = {}
-        for client, fit_res in results:
-            # Load model
-            params = fl.common.parameters_to_ndarrays(fit_res.parameters)
-            params_dict = zip(self.model.state_dict().keys(), params)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            cid = int(np.round(state_dict['cid'].item()))
-            # print(f"Server-side evaluation of client {cid}")
-            # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
-            self.model.load_state_dict(state_dict, strict=True)
-            # Evaluate the model
-            client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
-            client_data[cid] = client_metrics
-        # Aggregate metrics
-        w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
-        w_dist_norm = utils.normalize(w_dist)
-        w_error_norm = utils.normalize(w_error)
-        w_mix_norm = utils.normalize(w_mix)
-        # Save model
+        # client_data = {}
+        # for client, fit_res in results:
+        #     # Load model
+        #     params = fl.common.parameters_to_ndarrays(fit_res.parameters)
+        #     params_dict = zip(self.model.state_dict().keys(), params)
+        #     state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        #     cid = int(np.round(state_dict['cid'].item()))
+        #     # print(f"Server-side evaluation of client {cid}")
+        #     # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
+        #     self.model.load_state_dict(state_dict, strict=True)
+        #     # Evaluate the model
+        #     client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+        #     client_data[cid] = client_metrics
+        # # Aggregate metrics
+        # w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        # w_dist_norm = utils.normalize(w_dist)
+        # w_error_norm = utils.normalize(w_error)
+        # w_mix_norm = utils.normalize(w_mix)
+
         # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
         aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
 
+        # Save model
         if aggregated_parameters is not None:
 
             print(f"Saving round {server_round} aggregated_parameters...")
@@ -96,7 +97,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             self.model.load_state_dict(state_dict, strict=True)
             # Save the model
             torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
-        
         
 
         return aggregated_parameters, aggregated_metrics
@@ -200,33 +200,28 @@ def main() -> None:
         dataset=args.dataset,
         fold=args.fold,
         model_config=config,
-        accept_failures=False
     )
 
     # Start Flower server for three rounds of federated learning
-    try:
-        history = fl.server.start_server(
-            server_address="0.0.0.0:8070",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
-            config=fl.server.ServerConfig(num_rounds=args.rounds),
-            strategy=strategy,
-        )
-        # convert history to list
-        loss = [k[1] for k in history.losses_distributed]
-        accuracy = [k[1] for k in history.metrics_distributed['accuracy']]
-        validity = [k[1] for k in history.metrics_distributed['validity']]
+    history = fl.server.start_server(
+        server_address="0.0.0.0:8070",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
+        config=fl.server.ServerConfig(num_rounds=args.rounds),
+        strategy=strategy,
+    )
+    # convert history to list
+    loss = [k[1] for k in history.losses_distributed]
+    accuracy = [k[1] for k in history.metrics_distributed['accuracy']]
+    validity = [k[1] for k in history.metrics_distributed['validity']]
 
-        # Save loss and accuracy to a file
-        print(f"Saving metrics to as .json in histories folder...")
-        # # check if folder exists and save metrics
-        if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
-            os.makedirs(config['history_folder'] + f"server_{args.data_type}")
-        with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
-            json.dump({'loss': loss, 'accuracy': accuracy}, f)
+    # Save loss and accuracy to a file
+    print(f"Saving metrics to as .json in histories folder...")
+    # # check if folder exists and save metrics
+    if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
+        os.makedirs(config['history_folder'] + f"server_{args.data_type}")
+    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}_{args.attack_type}_{args.n_attackers}_{args.fold}.json', 'w') as f:
+        json.dump({'loss': loss, 'accuracy': accuracy, 'validity':validity}, f)
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-    # Plot
+    # Single Plot
     best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(args, loss, accuracy, validity, config=config, show=False)
 
     # Evaluate the model on the test set
@@ -260,7 +255,7 @@ def main() -> None:
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
     
     # Create gif
-    utils.create_gif(args, config)
+    # utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()
