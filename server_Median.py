@@ -295,7 +295,7 @@ def main() -> None:
     # # check if folder exists and save metrics
     if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
         os.makedirs(config['history_folder'] + f"server_{args.data_type}")
-    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}_{args.attack_type}_{args.n_attackers}_{'median'}_{args.fold}.json', 'w') as f:
+    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}_{args.attack_type}_{args.n_attackers}_median_{args.fold}.json', 'w') as f:
         json.dump({'loss': loss, 'accuracy': accuracy, 'validity':validity}, f)
  
     # Plot

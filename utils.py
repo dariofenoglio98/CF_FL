@@ -786,10 +786,13 @@ def normalize(vector):
     return x.numpy()  
     
 def aggregate_metrics(client_data, server_round, data_type, dataset, config, fold=0, add_name=""):
-    # if predictor 
+    # if predictor
     if isinstance(client_data[list(client_data.keys())[0]], float):
         pass
-    else: 
+    elif client_data == {}:
+        tmp = torch.tensor([0])
+        return tmp,tmp,tmp
+    else:
         errors = []
         common_changes = []
         counterfactuals = []
@@ -803,14 +806,12 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         common_changes = torch.cat(common_changes, dim=0)
         counterfactuals = torch.cat(counterfactuals, dim=0)
         samples = torch.cat(samples, dim=0)
-
+ 
         model_name = config["model_name"]
         # create folder
         if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}/{fold}"):
             os.makedirs(f"results/{model_name}/{dataset}/{data_type}/{fold}")
-
-
-
+ 
         # pca reduction
         pca = PCA(n_components=2, random_state=42)
         # generate random points around 0 with std 0.1 (errors shape)
@@ -842,12 +843,12 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     # kl = kl_divergence(a, b)
                     # print(kl)
                     cost_matrix = ot.dist(a, b, metric='euclidean')
-
+ 
                     # Compute the Wasserstein distance
                     # For simplicity, assume uniform distribution of weights
                     n = a.shape[0]
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
-
+ 
                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
                     dist_matrix[i, j] = wasserstein_distance
             dist_matrix_median = np.median(dist_matrix)
@@ -873,12 +874,12 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     # kl = kl_divergence(a, b)
                     # print(kl)
                     cost_matrix = ot.dist(a, b, metric='euclidean')
-
+ 
                     # Compute the Wasserstein distance
                     # For simplicity, assume uniform distribution of weights
                     n = a.shape[0]
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
-
+ 
                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
                     cf_matrix[i, j] = wasserstein_distance
             cf_matrix_median = np.median(cf_matrix)
@@ -894,7 +895,7 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         w_dist = compute_distance_weights(cf_matrix)
         w_error = compute_error_weights(errors_pca)
         w_mix = w_dist * w_error
-
+ 
         # # IoU feature changed
         # for i in client_data.keys():
         #     # print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")
@@ -902,10 +903,9 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         #         if i != j:
         #             iou = intersection_over_union(client_data[i]['changed_features'], client_data[j]['changed_features'])
         #             #print(f"IoU between client {i} and client {j}: {iou}")
-
+ 
         return w_dist, w_error, w_mix
-
-
+ 
 # distance metrics with training set
 def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: torch.Tensor):
     """
