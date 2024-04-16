@@ -72,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     "--defense",
     type=str,
-    choices=["median", "ours", "krum", "trim", "bulyan"],
+    choices=["median", "ours", "krum", "trim", "bulyan", "none"],
     default="ours",
     help="Specifies the defense mechanism to be used",
 )
@@ -163,12 +163,12 @@ if args.training_type == "federated":
         # delede file
         os.remove(f"results_fold_{i+1}.xlsx")
         # read json
-        with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{i+1}.json', 'r') as f:
+        with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_{i+1}.json', 'r') as f:
             plot_metrics.append(json.load(f))
             f.close()
     
     # plot metrics
-    utils.plot_mean_std_metrics(plot_metrics, config['image_folder']+f'server_side_{args.data_type}/KFold_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_metrics')
+    utils.plot_mean_std_metrics(plot_metrics, config['image_folder']+f'server_side_{args.data_type}/KFold_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_metrics')
 
     # mean results
     d["Proximity"] = np.mean(prox, axis=0)
