@@ -373,7 +373,27 @@ if args.n_clients < 8:
     inverted_client('data/df_diabetes_cluster_1')
     inverted_client('data/df_diabetes_cluster_2')
 
+    # flip the labels CF
+    def inverted_client(path):
+        client = pd.read_csv(path + '.csv')
+        # split the path
+        path = path.split('_')
+        new_path = path[0] + '_' + path[1] + '_' + path[2] + '_DP_inverted_loss_cf_' + path[3]
+        client.to_csv(new_path + '.csv', index=False)
+        print(f"Saved: {new_path}.csv of shape {client.shape}")
 
+    inverted_client('data/df_breast_random_1')
+    inverted_client('data/df_breast_random_2')
+    inverted_client('data/df_diabetes_random_1')
+    inverted_client('data/df_diabetes_random_2')
+    inverted_client('data/df_breast_2cluster_1')
+    inverted_client('data/df_breast_2cluster_2')
+    inverted_client('data/df_diabetes_2cluster_1')
+    inverted_client('data/df_diabetes_2cluster_2')
+    inverted_client('data/df_breast_cluster_1')
+    inverted_client('data/df_breast_cluster_2')
+    inverted_client('data/df_diabetes_cluster_1')
+    inverted_client('data/df_diabetes_cluster_2')
 
 
 ## Synthetic dataset
@@ -542,11 +562,17 @@ if args.synthetic_features == 2:
     inverted_2 =  {'x': data_dict[2]['x'], 'y': data_dict[2]['y']}
     inverted_2_test = {'x': data_dict_test[2]['x'], 'y': data_dict_test[2]['y']}
 
+    # inverted loss - same as honest
+    inverted_1_cf =  {'x': data_dict[1]['x'], 'y': data_dict[1]['y']}
+    inverted_1_test_cf = {'x': data_dict_test[1]['x'], 'y': data_dict_test[1]['y']}
+    inverted_2_cf =  {'x': data_dict[2]['x'], 'y': data_dict[2]['y']}
+    inverted_2_test_cf = {'x': data_dict_test[2]['x'], 'y': data_dict_test[2]['y']}
+
     # list
-    poisoned_data = [random_1, random_2, flipped_1, flipped_2, inverted_1, inverted_2]
+    poisoned_data = [random_1, random_2, flipped_1, flipped_2, inverted_1, inverted_2, inverted_1_cf, inverted_2_cf]
 
     # save poisoned datasets
-    list_name = ['DP_random_1', 'DP_random_2', 'DP_flip_1', 'DP_flip_2', 'DP_inverted_loss_1', 'DP_inverted_loss_2']
+    list_name = ['DP_random_1', 'DP_random_2', 'DP_flip_1', 'DP_flip_2', 'DP_inverted_loss_1', 'DP_inverted_loss_2', 'DP_inverted_loss_cf_1', 'DP_inverted_loss_cf_2']
     for i in range(len(poisoned_data)):
         df = np.concatenate((poisoned_data[i]['x'], poisoned_data[i]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
@@ -635,11 +661,17 @@ else:
     inverted_2 =  {'x': data_dict_2[12]['x'], 'y': data_dict_2[12]['y']}
     inverted_2_test = {'x': data_dict_test_2[12]['x'], 'y': data_dict_test_2[12]['y']}
 
+    # inverted loss - same as honest - CF
+    inverted_1_cf =  {'x': data_dict[1]['x'], 'y': data_dict[1]['y']}
+    inverted_1_test_cf = {'x': data_dict_test[1]['x'], 'y': data_dict_test[1]['y']}
+    inverted_2_cf =  {'x': data_dict_2[12]['x'], 'y': data_dict_2[12]['y']}
+    inverted_2_test_cf = {'x': data_dict_test_2[12]['x'], 'y': data_dict_test_2[12]['y']}
+
     # list
-    poisoned_data = [random_1, random_2, flipped_1, flipped_2, inverted_1, inverted_2]
+    poisoned_data = [random_1, random_2, flipped_1, flipped_2, inverted_1, inverted_2, inverted_1_cf, inverted_2_cf]
 
     # save poisoned datasets
-    list_name = ['DP_random_1', 'DP_random_2', 'DP_flip_1', 'DP_flip_2', 'DP_inverted_loss_1', 'DP_inverted_loss_2']
+    list_name = ['DP_random_1', 'DP_random_2', 'DP_flip_1', 'DP_flip_2', 'DP_inverted_loss_1', 'DP_inverted_loss_2', 'DP_inverted_loss_cf_1', 'DP_inverted_loss_cf_2']
     for i in range(len(poisoned_data)):
         df = np.concatenate((poisoned_data[i]['x'], poisoned_data[i]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])

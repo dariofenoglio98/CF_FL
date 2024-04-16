@@ -39,7 +39,7 @@ class FlowerClient(fl.client.NumPyClient):
                 params.append(v.cpu().numpy())
                 continue
             # Original parameters
-            if self.attack_type in ["None", "DP_flip", "DP_random", "DP_inverted_loss"]:
+            if self.attack_type in ["None", "DP_flip", "DP_random", "DP_inverted_loss", "DP_inverted_loss_cf"]:
                 params.append(v.cpu().numpy())
             # Mimic the actual parameter range by observing the mean and std of each parameter
             elif self.attack_type == "MP_random":
@@ -77,6 +77,14 @@ class FlowerClient(fl.client.NumPyClient):
                 model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
                     self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
                     self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
+            except Exception as e:
+                print(f"An error occurred during training: {e}, returning same model") 
+
+        elif self.attack_type in ["DP_inverted_loss_cf"]:
+            try:
+                model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
+                    self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
+                    self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config, inv_loss_cf=True)
             except Exception as e:
                 print(f"An error occurred during training: {e}, returning same model") 
 
@@ -150,7 +158,7 @@ def main()->None:
         "--attack_type",
         type=str,
         default='MP_random',
-        choices=["None", 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"],
+        choices=["None", 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss", "DP_inverted_loss_cf"],
         help="Specifies the attack type to be used",
     )
     args = parser.parse_args()

@@ -323,7 +323,7 @@ def loss_function_vcnet(H, x_reconstructed, q, y_prime, H2, X_train, y_train, lo
     return loss
 
 # train vcnet
-def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None, models_list=False):
+def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None, models_list=False, inv_loss_cf=False):
     train_loss = list()
     val_loss = list()
     train_acc = list()
@@ -335,6 +335,10 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
         model.train()
         H, x_reconstructed, q, y_prime, H2 = model(X_train)
         loss = loss_function_vcnet(H, x_reconstructed, q, y_prime, H2, X_train, y_train, loss_fn, config=config)
+        # inverted loss for attacking the counterfactuals
+        if inv_loss_cf:
+            loss = inv_loss_cf_fn(loss)
+
         train_loss.append(loss.item())
         
         optimizer.zero_grad()
@@ -396,10 +400,13 @@ def loss_function(H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_pri
             print(loss_task, loss_kl, loss_kl2, loss_rec, loss_validity)
         
         return loss
-        
 
+def inv_loss_cf_fn(standard_loss):
+        standard_loss = torch.clamp(standard_loss, min=0.001)
+        return 1.0 / standard_loss
+        
 # train our model
-def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None, models_list=False):
+def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=500, save_best=False, print_info=True, config=None, models_list=False, inv_loss_cf=False):
     train_loss = list()
     train_acc = list()
     val_loss = list()
@@ -411,6 +418,10 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         model.train()
         H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_train)
         loss = loss_function(H, x_reconstructed, q, p, H2, x_prime, q_prime, p_prime, y_prime, z2, z3, X_train, y_train, loss_fn, config=config)
+        # inverted loss for attacking the counterfactuals
+        if inv_loss_cf:
+            loss = inv_loss_cf_fn(loss)
+
         train_loss.append(loss.item())
         
         optimizer.zero_grad()
@@ -943,7 +954,7 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
 
 def create_dynamic_df(num_clients, validity, accuracy, loss, mean_distance,
                       mean_distance_list, hamming_prox, hamming_prox_list,
-                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list):
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, best_round):
     # Ensure that mean_distance_list and hamming_prox_list have the correct length
     if len(mean_distance_list) != num_clients or len(hamming_prox_list) != num_clients:
         raise ValueError("mean_distance_list and hamming_prox_list must match num_clients")
@@ -951,24 +962,24 @@ def create_dynamic_df(num_clients, validity, accuracy, loss, mean_distance,
     # Building the 'Label' column
     label_col = ['Validity', 'Accuracy', 'Loss', 'Distance']
     label_col += [f'Distance {i+1}' for i in range(num_clients)]
-    label_col += ['Hamming D', 'Euclidean D', 'Relative D', 'IoU', 'Variability']
+    label_col += ['Hamming D', 'Euclidean D', 'Relative D', 'IoU', 'Variability', 'Best Round']
 
     # Building the 'Proximity' column
     proximity_col = [validity, accuracy, loss, mean_distance]
     proximity_col += mean_distance_list
-    proximity_col += [hamming_distance, euclidean_distance, relative_distance, iou, var]
+    proximity_col += [hamming_distance, euclidean_distance, relative_distance, iou, var, best_round]
 
     # Building the 'Hamming' column
     hamming_col = [None, None, None, hamming_prox]
     hamming_col += hamming_prox_list
     hamming_col += [hamming_distance]
-    hamming_col += [None] * 4  # Adjusting length to match labels
+    hamming_col += [None] * 5  # Adjusting length to match labels
 
     # Building the 'Rel. Proximity' column
     relative_prox_col = [None] * 3 
     relative_prox_col += [relative_distance]
     relative_prox_col += relative_prox_list
-    relative_prox_col += [None] * 5  # Adjusting length to match labels
+    relative_prox_col += [None] * 6  # Adjusting length to match labels
 
     # Creating the DataFrame
     df = pd.DataFrame({
@@ -1117,7 +1128,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     # Create a dictionary for the xlsx file
     df = create_dynamic_df(n_clients, validity, accuracy, loss.cpu().item(), mean_distance,
                       mean_distance_list, hamming_prox, hamming_prox_list,
-                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list)
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, best_model_round)
 
     # # save metrics csv file
     # data = pd.DataFrame({
@@ -1848,7 +1859,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 # Create a dictionary for the xlsx file
                 df = create_dynamic_df(n_clients_honest, validity, accuracy, loss.cpu().item(), mean_distance,
                       mean_distance_list, hamming_prox, hamming_prox_list,
-                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list)
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, None)
 
                 # # save metrics csv file
                 # data = pd.DataFrame({
