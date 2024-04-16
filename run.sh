@@ -51,6 +51,9 @@ if [ "$defense" == "median" ]; then
     python server_Median.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
 fi
 if [ "$defense" == "ours" ]; then
+    python server_Ours.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+fi
+if [ "$defense" == "none" ]; then
     python server.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
 fi
 if [ "$defense" == "krum" ]; then

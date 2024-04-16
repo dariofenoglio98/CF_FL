@@ -2,12 +2,8 @@
 import flwr as fl
 import numpy as np
 from typing import List, Tuple, Union, Optional, Dict
+from flwr.common import Parameters, Scalar, Metrics
 from flwr.server.client_proxy import ClientProxy
-from logging import WARNING
-from typing import Callable, Dict, List, Optional, Tuple, Union
-from flwr.common.logger import log
-from flwr.server.strategy.aggregate import aggregate_median
-from flwr.server.strategy.fedavg import FedAvg
 from flwr.common import FitRes
 import argparse
 import torch
@@ -15,18 +11,15 @@ import utils
 import os
 from collections import OrderedDict
 import json
+from logging import WARNING
 import time
+from flwr.common import NDArray, NDArrays
+from functools import reduce
+from flwr.common.logger import log
 from flwr.common import (
-    FitRes,
-    Metrics,
-    MetricsAggregationFn,
-    NDArrays,
-    Parameters,
-    Scalar,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
-
 
 # Config_client
 def fit_config(server_round: int):
@@ -47,51 +40,31 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     # Aggregate and return custom metric (weighted average)
     return {"accuracy": sum(accuracies) / sum(examples), "validity": sum(validities) / sum(examples)}
 
-# Custom weighted average function
-class FedMedian(FedAvg):
-    """Configurable FedMedian strategy implementation."""
-    # pylint: disable=too-many-arguments,too-many-instance-attributes, line-too-long
-    def __init__(
-        self,
-        *,
-        fraction_fit: float = 1.0,
-        fraction_evaluate: float = 1.0,
-        min_fit_clients: int = 2,
-        min_evaluate_clients: int = 2,
-        min_available_clients: int = 2,
-        evaluate_fn: Optional[
-            Callable[
-                [int, NDArrays, Dict[str, Scalar]],
-                Optional[Tuple[float, Dict[str, Scalar]]],
-            ]
-        ] = None,
-        on_fit_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
-        on_evaluate_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
-        accept_failures: bool = True,
-        initial_parameters: Optional[Parameters] = None,
-        fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        model=None,
-        data_type: str = "random", # "random", "cluster", "2cluster"
-        checkpoint_folder: str = "checkpoints/",
-        dataset: str = "diabetes",
-        fold: int = 0,
-        model_config: dict = {},
-    ) -> None:
-        super().__init__(
-            fraction_fit=fraction_fit,
-            fraction_evaluate=fraction_evaluate,
-            min_fit_clients=min_fit_clients,
-            min_evaluate_clients=min_evaluate_clients,
-            min_available_clients=min_available_clients,
-            evaluate_fn=evaluate_fn,
-            on_fit_config_fn=on_fit_config_fn,
-            on_evaluate_config_fn=on_evaluate_config_fn,
-            accept_failures=accept_failures,
-            initial_parameters=initial_parameters,
-            fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
-            evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
-        )
+def aggregate(results: List[Tuple[NDArrays, int]], score: List) -> NDArrays:
+    """Compute weighted average - with importance score."""
+    # Calculate the total number of examples used during training
+    num_examples_total = sum([num_examples for _, num_examples in results])
+
+    # Create a list of weights, each multiplied by the related number of examples
+    weighted_weights = [
+        [layer * num_examples for layer in weights] for weights, num_examples in results
+    ]
+    # score weighting
+    weighted_weights = [
+        [layer * score[i] for layer in weights] for i, weights in enumerate(weighted_weights)
+    ]
+
+    # Compute average weights of each layer
+    weights_prime: NDArrays = [
+        reduce(np.add, layer_updates) / num_examples_total
+        for layer_updates in zip(*weighted_weights)
+    ]
+    return weights_prime
+
+# Custom strategy to save model after each round
+class SaveModelStrategy(fl.server.strategy.FedAvg):
+    def __init__(self, model, data_type, checkpoint_folder, dataset, fold, model_config, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.model = model
         self.data_type = data_type
         self.checkpoint_folder = checkpoint_folder
@@ -101,58 +74,20 @@ class FedMedian(FedAvg):
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
+
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
             os.makedirs(self.checkpoint_folder + f"{self.data_type}")
 
-    def __repr__(self) -> str:
-        """Compute a string representation of the strategy."""
-        rep = f"FedMedian(accept_failures={self.accept_failures})"
-        return rep
-
+    # Override aggregate_fit method to add saving functionality
     def aggregate_fit(
         self,
         server_round: int,
-        results: List[Tuple[ClientProxy, FitRes]],
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate fit results using median."""
-        if not results:
-            return None, {}
-        # Do not aggregate if there are failures and failures are not accepted
-        if not self.accept_failures and failures:
-            return None, {}
+        """Aggregate model weights using weighted average and store checkpoint"""
 
-        # Convert results
-        weights_results = [
-            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
-        ]
-        aggregated_parameters = ndarrays_to_parameters(
-            aggregate_median(weights_results)
-        )
-
-        # Aggregate custom metrics if aggregation fn was provided
-        metrics_aggregated = {}
-        if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
-        elif server_round == 1:  # Only log this warning once
-            log(WARNING, "No fit_metrics_aggregation_fn provided")
-
-        # Save the model after each round
-        if aggregated_parameters is not None:
-
-            print(f"Saving round {server_round} aggregated_parameters...")
-            # Convert `Parameters` to `List[np.ndarray]`
-            aggregated_ndarrays: List[np.ndarray] = fl.common.parameters_to_ndarrays(aggregated_parameters)
-            # Convert `List[np.ndarray]` to PyTorch`state_dict`
-            params_dict = zip(self.model.state_dict().keys(), aggregated_ndarrays)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            self.model.load_state_dict(state_dict, strict=True)
-            # Save the model
-            torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
-        
         # Perform evaluation on the server side on each single client after local training       
         # for each clients evaluate the model
         client_data = {}
@@ -168,15 +103,51 @@ class FedMedian(FedAvg):
             # Evaluate the model
             client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
             client_data[cid] = client_metrics
-        
         # Aggregate metrics
-        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        # w_dist_norm = utils.normalize(w_dist)
+        # w_error_norm = utils.normalize(w_error)
+        w_mix_norm = utils.normalize(w_mix)
 
-        return aggregated_parameters, metrics_aggregated
+        # Aggregations
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
 
+        # Convert results
+        weights_results = [
+            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+            for _, fit_res in results
+        ]
 
+        aggregated_parameters = ndarrays_to_parameters(aggregate(weights_results, w_mix_norm))
 
+        # Aggregate custom metrics if aggregation fn was provided
+        aggregated_metrics = {}
+        if self.fit_metrics_aggregation_fn:
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            aggregated_metrics = self.fit_metrics_aggregation_fn(fit_metrics)
+        elif server_round == 1:  # Only log this warning once
+            log(WARNING, "No fit_metrics_aggregation_fn provided")
+        # aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
 
+        # Save model
+        if aggregated_parameters is not None:
+
+            print(f"Saving round {server_round} aggregated_parameters...")
+            # Convert `Parameters` to `List[np.ndarray]`
+            aggregated_ndarrays: List[np.ndarray] = fl.common.parameters_to_ndarrays(aggregated_parameters)
+            # Convert `List[np.ndarray]` to PyTorch`state_dict`
+            params_dict = zip(self.model.state_dict().keys(), aggregated_ndarrays)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.model.load_state_dict(state_dict, strict=True)
+            # Save the model
+            torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
+        
+
+        return aggregated_parameters, aggregated_metrics
 
 
 
@@ -262,7 +233,7 @@ def main() -> None:
     config = utils.config_tests[args.dataset][args.model]
 
     # Define strategy
-    strategy = FedMedian(
+    strategy = SaveModelStrategy(
         model=model(config=config), # model to be trained
         min_fit_clients=args.n_clients+args.n_attackers, # Never sample less than 10 clients for training
         min_evaluate_clients=args.n_clients+args.n_attackers,  # Never sample less than 5 clients for evaluation
@@ -297,8 +268,8 @@ def main() -> None:
         os.makedirs(config['history_folder'] + f"server_{args.data_type}")
     with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}_{args.attack_type}_{args.n_attackers}_{args.fold}.json', 'w') as f:
         json.dump({'loss': loss, 'accuracy': accuracy, 'validity':validity}, f)
- 
-    # Plot
+
+    # Single Plot
     best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(args, loss, accuracy, validity, config=config, show=False)
 
     # Evaluate the model on the test set
@@ -332,7 +303,7 @@ def main() -> None:
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
     
     # Create gif
-    utils.create_gif(args, config)
+    # utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()

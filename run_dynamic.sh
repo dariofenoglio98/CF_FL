@@ -4,13 +4,13 @@
 # Parameters
 model="net"
 data_type="random"  # Options: "cluster", "2cluster", "random"
-n_rounds=200
+n_rounds=30
 dataset="synthetic" # Options: "diabetes", "breast", "synthetic"
 synthetic_features=2
 n_clients=5
-n_attackers=2  # Adjust this as needed for testing attackers
+n_attackers=1  # Adjust this as needed for testing attackers
 attack_type="MP_random" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss",
-pers=1
+pers=0
 fold=0
 
 # create data
@@ -19,7 +19,7 @@ python data/client_split.py --seed 1 --n_clients $n_clients --synthetic_features
 
 echo -e "\n\033[1;36mStarting server with model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
 # python server.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients_server" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
-python server.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+python server_Ours.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
 sleep 2  # Sleep for 2s to give the server enough time to start
 
 for i in $(seq 1 $n_clients); do

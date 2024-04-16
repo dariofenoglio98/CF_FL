@@ -771,7 +771,8 @@ def compute_error_weights(errors):
     return 1 - magnitude + 1e-6
 
 def normalize(vector):
-    return vector / vector.sum()
+    x = vector / vector.sum()
+    return x.numpy()  
     
 def aggregate_metrics(client_data, server_round, data_type, dataset, config, fold=0, add_name=""):
     # if predictor 

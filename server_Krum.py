@@ -344,8 +344,8 @@ def main() -> None:
     # # check if folder exists and save metrics
     if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
         os.makedirs(config['history_folder'] + f"server_{args.data_type}")
-    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}.json', 'w') as f:
-        json.dump({'loss': loss, 'accuracy': accuracy}, f)
+    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}_{args.attack_type}_{args.n_attackers}_{args.fold}.json', 'w') as f:
+        json.dump({'loss': loss, 'accuracy': accuracy, 'validity':validity}, f)
  
     # Plot
     best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(args, loss, accuracy, validity, config=config, show=False)
