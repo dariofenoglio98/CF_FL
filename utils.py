@@ -787,11 +787,11 @@ def normalize(vector):
     
 def aggregate_metrics(client_data, server_round, data_type, dataset, config, fold=0, add_name=""):
     # if predictor
-    if isinstance(client_data[list(client_data.keys())[0]], float):
-        pass
-    elif client_data == {}:
+    if client_data == {}:
         tmp = torch.tensor([0])
         return tmp,tmp,tmp
+    elif isinstance(client_data[list(client_data.keys())[0]], float):
+        pass
     else:
         errors = []
         common_changes = []
