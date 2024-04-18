@@ -40,23 +40,24 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     # Aggregate and return custom metric (weighted average)
     return {"accuracy": sum(accuracies) / sum(examples), "validity": sum(validities) / sum(examples)}
 
-def aggregate(results: List[Tuple[NDArrays, int]], score: List) -> NDArrays:
+def aggregate(results: List[Tuple[NDArrays, int]], scores: List) -> NDArrays:
     """Compute weighted average - with importance score."""
-    # Calculate the total number of examples used during training
-    num_examples_total = sum([num_examples for _, num_examples in results])
+    
+    if len(results) != len(scores):
+        raise ValueError("Each result must have a corresponding score.")
 
-    # Create a list of weights, each multiplied by the related number of examples
+    # Calculate the total weight, which is the sum of products of the number of examples and scores
+    total_weight = sum(num_examples * score for (_, num_examples), score in zip(results, scores))
+
+    # Create a list of weighted weights, where each client's weights are multiplied by the number of examples and the score
     weighted_weights = [
-        [layer * num_examples for layer in weights] for weights, num_examples in results
-    ]
-    # score weighting
-    weighted_weights = [
-        [layer * score[i] for layer in weights] for i, weights in enumerate(weighted_weights)
+        [layer * num_examples * score for layer in weights] 
+        for (weights, num_examples), score in zip(results, scores)
     ]
 
     # Compute average weights of each layer
     weights_prime: NDArrays = [
-        reduce(np.add, layer_updates) / num_examples_total
+        reduce(np.add, layer_updates) / total_weight
         for layer_updates in zip(*weighted_weights)
     ]
     return weights_prime

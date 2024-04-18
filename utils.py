@@ -797,7 +797,8 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         common_changes = []
         counterfactuals = []
         samples = []
-        for client in sorted(client_data.keys()):
+        # for client in sorted(client_data.keys()):
+        for client in client_data.keys():
             errors.append(client_data[client]['errors'].unsqueeze(0))
             common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
             counterfactuals.append(client_data[client]['counterfactuals'].unsqueeze(0))
