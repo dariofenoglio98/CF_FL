@@ -15,6 +15,7 @@ from tqdm import tqdm
 import imageio
 import seaborn as sns
 from collections import OrderedDict
+from scipy.spatial.distance import cdist
 
 
 def update_and_freeze_predictor_weights(model, dataset="synthetic", data_type="random"):
@@ -785,6 +786,128 @@ def normalize(vector):
     x = vector / vector.sum()
     return x.numpy()  
     
+# def aggregate_metrics(client_data, server_round, data_type, dataset, config, fold=0, add_name=""):
+#     # if predictor
+#     if client_data == {}:
+#         tmp = torch.tensor([0])
+#         return tmp,tmp,tmp
+#     elif isinstance(client_data[list(client_data.keys())[0]], float):
+#         pass
+#     else:
+#         errors = []
+#         common_changes = []
+#         counterfactuals = []
+#         samples = []
+#         # for client in sorted(client_data.keys()):
+#         for client in client_data.keys():
+#             errors.append(client_data[client]['errors'].unsqueeze(0))
+#             common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
+#             counterfactuals.append(client_data[client]['counterfactuals'].unsqueeze(0))
+#             samples.append(client_data[client]['dataset'].unsqueeze(0))
+#         errors = torch.cat(errors, dim=0)
+#         common_changes = torch.cat(common_changes, dim=0)
+#         counterfactuals = torch.cat(counterfactuals, dim=0)
+#         samples = torch.cat(samples, dim=0)
+ 
+#         model_name = config["model_name"]
+#         # create folder
+#         if not os.path.exists(f"results/{model_name}/{dataset}/{data_type}/{fold}"):
+#             os.makedirs(f"results/{model_name}/{dataset}/{data_type}/{fold}")
+ 
+#         # pca reduction
+#         pca = PCA(n_components=2, random_state=42)
+#         # generate random points around 0 with std 0.1 (errors shape)
+#         torch.manual_seed(42)
+#         rand_points = torch.normal(mean=0, std=0.1, size=(100, errors.shape[1]))
+#         worst_points = torch.normal(mean=1, std=0.3, size=(100, errors.shape[1]))
+#         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
+#         errors_pca = pca.transform(errors.cpu().detach().numpy())
+#         worst_points_pca = pca.transform(worst_points.cpu().detach().numpy())
+#         pca = PCA(n_components=2, random_state=42)
+#         rand_points = torch.normal(mean=0, std=0.1, size=(common_changes.shape[1:]))
+#         rand_pca = pca.fit_transform(rand_points.cpu().detach().numpy())
+#         #common_changes_pca = common_changes.clone().cpu().detach().numpy()
+#         common_changes_pca = np.zeros((common_changes.shape[0], common_changes.shape[1], 2))
+#         dist_matrix = np.zeros((common_changes.shape[0], common_changes.shape[0]))
+#         for i, el in enumerate(common_changes):
+#             common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
+#         # common_changes_pca_tt = common_changes_pca[:1000]
+#         if server_round % 1 == 0:
+#             for i, el in enumerate(common_changes_pca):
+#                 # a = torch.tensor(common_changes_pca[i])
+#                 a = np.array(common_changes_pca[i])
+#                 # a, _ = a.sort(dim=0)
+#                 for j, el2 in enumerate(common_changes_pca):
+#                     # b = torch.tensor(common_changes_pca[j])
+#                     # b, _ = b.sort(dim=0)
+#                     b = np.array(common_changes_pca[j])
+#                     # print(a.shape, b.shape)
+#                     # kl = kl_divergence(a, b)
+#                     # print(kl)
+#                     cost_matrix = ot.dist(a, b, metric='euclidean')
+ 
+#                     # Compute the Wasserstein distance
+#                     # For simplicity, assume uniform distribution of weights
+#                     n = a.shape[0]
+#                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
+ 
+#                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
+#                     dist_matrix[i, j] = wasserstein_distance
+#             dist_matrix_median = np.median(dist_matrix)
+#             # print(dist_matrix_median)
+#             dist_matrix = dist_matrix / dist_matrix_median
+#             np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
+#         pca = PCA(n_components=2, random_state=42)
+#         _ = pca.fit_transform(samples[0].cpu().detach().numpy())
+#         counterfactuals_pca = np.zeros((counterfactuals.shape[0], counterfactuals.shape[1], 2))
+#         for i, el in enumerate(counterfactuals):
+#             counterfactuals_pca[i] = pca.transform(el.cpu().detach().numpy())
+#         cf_matrix = np.zeros((counterfactuals_pca.shape[0], counterfactuals_pca.shape[0]))
+#         if server_round % 1 == 0:
+#             for i, el in enumerate(counterfactuals_pca):
+#                 # a = torch.tensor(common_changes_pca[i])
+#                 a = np.array(counterfactuals_pca[i])
+#                 # a, _ = a.sort(dim=0)
+#                 for j, el2 in enumerate(counterfactuals_pca):
+#                     # b = torch.tensor(common_changes_pca[j])
+#                     # b, _ = b.sort(dim=0)
+#                     b = np.array(counterfactuals_pca[j])
+#                     # print(a.shape, b.shape)
+#                     # kl = kl_divergence(a, b)
+#                     # print(kl)
+#                     cost_matrix = ot.dist(a, b, metric='euclidean')
+ 
+#                     # Compute the Wasserstein distance
+#                     # For simplicity, assume uniform distribution of weights
+#                     n = a.shape[0]
+#                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
+ 
+#                     wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
+#                     cf_matrix[i, j] = wasserstein_distance
+#             cf_matrix_median = np.median(cf_matrix)
+#             # print(cf_matrix_median)
+#             cf_matrix = cf_matrix / cf_matrix_median
+#             np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/cf_matrix_{server_round}{add_name}.npy", cf_matrix)
+#         # save errors and common changes
+#         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/errors_{server_round}{add_name}.npy", errors_pca)
+#         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/worst_points_{server_round}{add_name}.npy", worst_points_pca)
+#         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/common_changes_{server_round}{add_name}.npy", common_changes_pca)
+#         np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/counterfactuals_{server_round}{add_name}.npy", counterfactuals_pca)
+        
+#         w_dist = compute_distance_weights(cf_matrix)
+#         w_error = compute_error_weights(errors_pca)
+#         w_mix = w_dist * w_error
+ 
+#         # # IoU feature changed
+#         # for i in client_data.keys():
+#         #     # print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")
+#         #     for j in client_data.keys():
+#         #         if i != j:
+#         #             iou = intersection_over_union(client_data[i]['changed_features'], client_data[j]['changed_features'])
+#         #             #print(f"IoU between client {i} and client {j}: {iou}")
+ 
+#         return w_dist, w_error, w_mix
+
 def aggregate_metrics(client_data, server_round, data_type, dataset, config, fold=0, add_name=""):
     # if predictor
     if client_data == {}:
@@ -831,31 +954,31 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         for i, el in enumerate(common_changes):
             common_changes_pca[i] = pca.transform(el.cpu().detach().numpy())
         # common_changes_pca_tt = common_changes_pca[:1000]
-        if server_round % 1 == 0:
-            for i, el in enumerate(common_changes_pca):
-                # a = torch.tensor(common_changes_pca[i])
-                a = np.array(common_changes_pca[i])
-                # a, _ = a.sort(dim=0)
-                for j, el2 in enumerate(common_changes_pca):
-                    # b = torch.tensor(common_changes_pca[j])
-                    # b, _ = b.sort(dim=0)
-                    b = np.array(common_changes_pca[j])
-                    # print(a.shape, b.shape)
-                    # kl = kl_divergence(a, b)
-                    # print(kl)
-                    cost_matrix = ot.dist(a, b, metric='euclidean')
+        # if server_round % 1 == 0:
+        #     for i, el in enumerate(common_changes_pca):
+        #         # a = torch.tensor(common_changes_pca[i])
+        #         a = np.array(common_changes_pca[i])
+        #         # a, _ = a.sort(dim=0)
+        #         for j, el2 in enumerate(common_changes_pca):
+        #             # b = torch.tensor(common_changes_pca[j])
+        #             # b, _ = b.sort(dim=0)
+        #             b = np.array(common_changes_pca[j])
+        #             # print(a.shape, b.shape)
+        #             # kl = kl_divergence(a, b)
+        #             # print(kl)
+        #             cost_matrix = ot.dist(a, b, metric='euclidean')
  
-                    # Compute the Wasserstein distance
-                    # For simplicity, assume uniform distribution of weights
-                    n = a.shape[0]
-                    w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
+        #             # Compute the Wasserstein distance
+        #             # For simplicity, assume uniform distribution of weights
+        #             n = a.shape[0]
+        #             w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
  
-                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
-                    dist_matrix[i, j] = wasserstein_distance
-            dist_matrix_median = np.median(dist_matrix)
-            # print(dist_matrix_median)
-            dist_matrix = dist_matrix / dist_matrix_median
-            np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
+        #             wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
+        #             dist_matrix[i, j] = wasserstein_distance
+        #     dist_matrix_median = np.median(dist_matrix)
+        #     # print(dist_matrix_median)
+        #     dist_matrix = dist_matrix / dist_matrix_median
+        #     np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
         pca = PCA(n_components=2, random_state=42)
         _ = pca.fit_transform(samples[0].cpu().detach().numpy())
         counterfactuals_pca = np.zeros((counterfactuals.shape[0], counterfactuals.shape[1], 2))
@@ -871,17 +994,24 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     # b = torch.tensor(common_changes_pca[j])
                     # b, _ = b.sort(dim=0)
                     b = np.array(counterfactuals_pca[j])
-                    # print(a.shape, b.shape)
+                    #print(a.shape, b.shape)
                     # kl = kl_divergence(a, b)
                     # print(kl)
-                    cost_matrix = ot.dist(a, b, metric='euclidean')
+                    # cost_matrix = ot.dist(a, b, metric='euclidean')
+                    cost_matrix = cdist(a, b, metric='euclidean')
  
                     # Compute the Wasserstein distance
                     # For simplicity, assume uniform distribution of weights
                     n = a.shape[0]
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
+
  
-                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
+                    #wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
+                    # faster option: approximation of wasserstein distance
+                    # Compute the regularized Wasserstein distance using the Sinkhorn algorithm
+                    lambda_reg = 0.01  # Regularization parameter
+                    wasserstein_distance = ot.sinkhorn2(w1, w2, cost_matrix, reg=lambda_reg)
+
                     cf_matrix[i, j] = wasserstein_distance
             cf_matrix_median = np.median(cf_matrix)
             # print(cf_matrix_median)

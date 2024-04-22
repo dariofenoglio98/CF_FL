@@ -5,7 +5,7 @@
 model="net"
 data_type="2cluster"  # Options: "cluster", "2cluster", "random"
 n_rounds=200
-dataset="breast" # Options: "diabetes", "breast", "synthetic"
+dataset="diabetes" # Options: "diabetes", "breast", "synthetic"
 synthetic_features=2
 n_clients=5
 n_attackers=0  # Adjust this as needed for testing attackers

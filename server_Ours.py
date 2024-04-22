@@ -75,6 +75,9 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
+        if self.dataset == 'diabetes':
+            self.X_test = self.X_test[:4000]
+            self.y_test = self.y_test[:4000]
 
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
