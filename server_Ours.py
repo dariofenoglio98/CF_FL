@@ -26,7 +26,7 @@ def fit_config(server_round: int):
     """Return training configuration dict for each round."""
     config = {
         "current_round": server_round,
-        "local_epochs": 2,
+        "local_epochs": 4,
         "tot_rounds": 20,
     }
     return config
@@ -46,21 +46,53 @@ def aggregate(results: List[Tuple[NDArrays, int]], scores: List) -> NDArrays:
     if len(results) != len(scores):
         raise ValueError("Each result must have a corresponding score.")
 
-    # Calculate the total weight, which is the sum of products of the number of examples and scores
-    total_weight = sum(num_examples * score for (_, num_examples), score in zip(results, scores))
+    filtered_results_scores = []
+    for n, ((weights, num_examples), score) in enumerate(zip(results, scores)):
+        if not any(np.isnan(layer).any() for layer in weights):
+            filtered_results_scores.append((weights, num_examples, score))
+        else:
+            print(f"Removed client {n} with weights containing NaN values")
 
-    # Create a list of weighted weights, where each client's weights are multiplied by the number of examples and the score
+    if not filtered_results_scores:
+        raise ValueError("All clients have invalid (NaN) weights.")
+
+    # Calculate the total weight from the filtered results
+    total_weight = sum(num_examples * score for _, num_examples, score in filtered_results_scores)
+
+    # Create a list of weighted weights for the remaining valid clients
     weighted_weights = [
         [layer * num_examples * score for layer in weights] 
-        for (weights, num_examples), score in zip(results, scores)
+        for weights, num_examples, score in filtered_results_scores
     ]
 
-    # Compute average weights of each layer
+    # Compute average weights of each layer using valid entries
     weights_prime: NDArrays = [
         reduce(np.add, layer_updates) / total_weight
         for layer_updates in zip(*weighted_weights)
     ]
     return weights_prime
+
+# def aggregate(results: List[Tuple[NDArrays, int]], scores: List) -> NDArrays:
+#     """Compute weighted average - with importance score."""
+    
+#     if len(results) != len(scores):
+#         raise ValueError("Each result must have a corresponding score.")
+
+#     # Calculate the total weight, which is the sum of products of the number of examples and scores
+#     total_weight = sum(num_examples * score for (_, num_examples), score in zip(results, scores))
+
+#     # Create a list of weighted weights, where each client's weights are multiplied by the number of examples and the score
+#     weighted_weights = [
+#         [layer * num_examples * score for layer in weights] 
+#         for (weights, num_examples), score in zip(results, scores)
+#     ]
+
+#     # Compute average weights of each layer
+#     weights_prime: NDArrays = [
+#         reduce(np.add, layer_updates) / total_weight
+#         for layer_updates in zip(*weighted_weights)
+#     ]
+#     return weights_prime
 
 # Custom strategy to save model after each round
 class SaveModelStrategy(fl.server.strategy.FedAvg):
@@ -101,21 +133,29 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             params_dict = zip(self.model.state_dict().keys(), params)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             cid = int(np.round(state_dict['cid'].item()))
-            # print(f"Server-side evaluation of client {cid}")
-            # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
-            self.model.load_state_dict(state_dict, strict=True)
-            # Evaluate the model
-            try:
+
+            # Check for NaN values in parameters
+            if any(np.isnan(param).any() for param in params):
+                print(f"NaN values found in parameters of client {client.cid}, skipping this client - assigning zero weights")
+                client_data[cid] = {"errors":[0]}
+            else:
+                # print(f"Server-side evaluation of client {cid}")
+                # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
+                self.model.load_state_dict(state_dict, strict=True)
+                # Evaluate the model
+                # try:
+                #     client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+                #     client_data[cid] = client_metrics
+                # except Exception as e:
+                #     print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero weights") 
+                #     client_data[cid] = {"errors":[0]}
                 client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
                 client_data[cid] = client_metrics
-            except Exception as e:
-                print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero metrics") 
-
         # Aggregate metrics
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
         # w_dist_norm = utils.normalize(w_dist)
-        # w_error_norm = utils.normalize(w_error)
-        w_mix_norm = utils.normalize(w_mix)
+        w_error_norm = utils.normalize(w_error)
+        #w_mix_norm = utils.normalize(w_mix)
 
         # Aggregations
         if not results:
@@ -130,7 +170,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             for _, fit_res in results
         ]
 
-        aggregated_parameters = ndarrays_to_parameters(aggregate(weights_results, w_mix_norm))
+        aggregated_parameters = ndarrays_to_parameters(aggregate(weights_results, w_error_norm))
 
         # Aggregate custom metrics if aggregation fn was provided
         aggregated_metrics = {}

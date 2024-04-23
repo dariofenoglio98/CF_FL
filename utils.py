@@ -362,7 +362,7 @@ def train_vcnet(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epo
             
         if save_best and val_loss[-1] < best_loss:
             best_loss = val_loss[-1]
-            model_best = model
+            model_best = copy.deepcopy(model)
             
         if epoch % 50 == 0: # and print_info:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
@@ -445,7 +445,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
         
         if save_best and val_loss[-1] < best_loss:
             best_loss = val_loss[-1]
-            model_best = model
+            model_best = copy.deepcopy(model)
             
         if epoch % 50 == 0: # and print_info:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
@@ -516,7 +516,7 @@ def train_predictor(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n
     
         if save_best and loss_val[-1] < best_loss:
             best_loss = loss_val[-1]
-            model_best = model
+            model_best = copy.deepcopy(model)
         
         if models_list:
             model_list.append(copy.deepcopy(model))
@@ -920,8 +920,12 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         common_changes = []
         counterfactuals = []
         samples = []
+        client_to_skip = None
         # for client in sorted(client_data.keys()):
-        for client in client_data.keys():
+        for n, client in enumerate(client_data.keys()):
+            if len(client_data[client]['errors']) == 1:
+                client_to_skip = n
+                continue
             errors.append(client_data[client]['errors'].unsqueeze(0))
             common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
             counterfactuals.append(client_data[client]['counterfactuals'].unsqueeze(0))
@@ -1026,7 +1030,13 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         w_dist = compute_distance_weights(cf_matrix)
         w_error = compute_error_weights(errors_pca)
         w_mix = w_dist * w_error
- 
+
+        if client_to_skip is not None:
+            w_dist = np.insert(w_dist, client_to_skip, 0)
+            w_error = np.insert(w_error, client_to_skip, 0)
+            w_mix = np.insert(w_mix, client_to_skip, 0)
+            print(f"Client {client_to_skip} skipped - {w_mix}")
+
         # # IoU feature changed
         # for i in client_data.keys():
         #     # print(f"Client {i} changed features combination: {client_data[i]['changed_features'].shape[0]}")

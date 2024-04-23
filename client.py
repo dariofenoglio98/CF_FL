@@ -41,10 +41,11 @@ class FlowerClient(fl.client.NumPyClient):
             model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
                 self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
                 self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
-            return self.get_parameters(config), self.num_examples["trainset"], {}
+    
         except Exception as e:
-            print(f"An error occurred during training of client {self.client_id}: {e}, returning same model") 
-            return self.get_parameters(config), self.num_examples["trainset"], {}
+            print(f"An error occurred during training of Honest client {self.client_id}: {e}, returning model with error") 
+        
+        return self.get_parameters(config), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)

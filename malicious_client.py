@@ -25,7 +25,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.train_fn = train_fn
         self.evaluate_fn = evaluate_fn
         self.history_folder = config_model['history_folder']
-        self.config = config_model
+        self.config_model = config_model
         self.attack_type = attack_type
         self.saved_models = {} # Save the parameters of the previous rounds
 
@@ -76,17 +76,19 @@ class FlowerClient(fl.client.NumPyClient):
             try:
                 model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
                     self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
-                    self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config)
+                    self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config_model)
             except Exception as e:
-                print(f"An error occurred during training: {e}, returning same model") 
+                # print(f"An error occurred during training of Malicious client: {e}, returning model with error") 
+                print(f"An error occurred during training of Malicious client, returning model with error") 
 
         elif self.attack_type in ["DP_inverted_loss_cf"]:
             try:
                 model_trained, train_loss, val_loss, acc, acc_prime, acc_val, _ = self.train_fn(
                     self.model, self.loss_fn, self.optimizer, self.X_train, self.y_train, 
-                    self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config, inv_loss_cf=True)
+                    self.X_val, self.y_val, n_epochs=config["local_epochs"], print_info=False, config=self.config_model, inv_loss_cf=True)
             except Exception as e:
-                print(f"An error occurred during training: {e}, returning same model") 
+                # print(f"An error occurred during training of Malicious client: {e}, returning model with error") 
+                print(f"An error occurred during training of Malicious client, returning model with error")
 
         elif self.attack_type == "MP_gradient":
             self.saved_models[config["current_round"]] = {k: v.clone() for k, v in self.model.state_dict().items()}
@@ -99,18 +101,19 @@ class FlowerClient(fl.client.NumPyClient):
         self.set_parameters(parameters)
         if self.model.__class__.__name__ == "Predictor":
             try:
-                loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn, config=self.config)
+                loss, accuracy = utils.evaluate_predictor(self.model, self.X_val, self.y_val, self.loss_fn, config=self.config_model)
                 # save loss and accuracy client
                 utils.save_client_metrics(config["current_round"], loss, accuracy, 0, client_id=self.client_id,
                                         data_type=self.data_type, tot_rounds=config['tot_rounds'], history_folder=self.history_folder)
                 return float(loss), self.num_examples["valset"], {"accuracy": float(accuracy), "mean_distance": float(0), "validity": float(0)}
             except Exception as e:
-                print(f"An error occurred during inference: {e}, returning same zero metrics") 
+                #print(f"An error occurred during inference of Malicious client: {e}, returning same zero metrics") 
+                print(f"An error occurred during inference of Malicious client, returning same zero metrics")
                 return float(10000), self.num_examples["valset"], {"accuracy": float(0), "mean_distance": float(10000), "validity": float(0)}
 
         else:
             try:
-                loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = self.evaluate_fn(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train, config=self.config)
+                loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability = self.evaluate_fn(self.model, self.X_val, self.y_val, self.loss_fn, self.X_train, self.y_train, config=self.config_model)
                 # save loss and accuracy client
                 utils.save_client_metrics(config["current_round"], loss, accuracy, validity, mean_proximity, hamming_distance, euclidian_distance, iou, variability,
                                         self.client_id, self.data_type, config['tot_rounds'], self.history_folder)
@@ -118,7 +121,8 @@ class FlowerClient(fl.client.NumPyClient):
                                                                 "hamming_distance": float(hamming_distance), "euclidian_distance": float(euclidian_distance),
                                                                 "iou": float(iou), "variability": float(variability)}
             except Exception as e:
-                print(f"An error occurred during inference: {e}, returning same zero metrics") 
+                # print(f"An error occurred during inference of Malicious client: {e}, returning same zero metrics") 
+                print(f"An error occurred during inference of Malicious client, returning same zero metrics")
                 return float(10000), self.num_examples["valset"], {"accuracy": float(0), "proximity": float(10000), "validity": float(0),
                                                                 "hamming_distance": float(10000), "euclidian_distance": float(10000),
                                                                 "iou": float(0), "variability": float(0)}

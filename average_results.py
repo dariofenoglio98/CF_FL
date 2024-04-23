@@ -72,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     "--defense",
     type=str,
-    choices=["median", "ours", "krum", "trim", "bulyan", "none"],
+    choices=["median", "ours", "krum", "trim", "bulyan", "none", ""],
     default="ours",
     help="Specifies the defense mechanism to be used",
 )
@@ -103,7 +103,7 @@ if args.training_type == "privacy_intrusive":
         hamm.append(d["Hamming"].values)
         rel_prox.append(d["Rel. Proximity"].values)
         # delede file
-        os.remove(f"results_fold_{i+1}.xlsx")
+        # os.remove(f"results_fold_{i+1}.xlsx")
 
     # mean results
     d["Proximity"] = np.mean(prox, axis=0)
