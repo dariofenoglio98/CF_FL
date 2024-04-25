@@ -321,6 +321,7 @@ def main() -> None:
         fraction_fit=1.0, # Sample 100 % of available clients for training
         fraction_evaluate=1.0, # Sample 100 % of available clients for evaluation
         evaluate_metrics_aggregation_fn=weighted_average,
+        num_malicious_clients=args.n_attackers,
         on_evaluate_config_fn=fit_config,
         on_fit_config_fn=fit_config,
         data_type=args.data_type,

@@ -143,19 +143,19 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
                 self.model.load_state_dict(state_dict, strict=True)
                 # Evaluate the model
-                # try:
-                #     client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
-                #     client_data[cid] = client_metrics
-                # except Exception as e:
-                #     print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero weights") 
-                #     client_data[cid] = {"errors":[0]}
-                client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
-                client_data[cid] = client_metrics
+                try:
+                    client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+                    client_data[cid] = client_metrics
+                except Exception as e:
+                    print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero weights") 
+                    client_data[cid] = {"errors":[0]}
+                # client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+                # client_data[cid] = client_metrics
         # Aggregate metrics
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
         # w_dist_norm = utils.normalize(w_dist)
-        w_error_norm = utils.normalize(w_error)
-        #w_mix_norm = utils.normalize(w_mix)
+        # w_error_norm = utils.normalize(w_error)
+        w_mix_norm = utils.normalize(w_mix)
 
         # Aggregations
         if not results:
@@ -170,7 +170,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             for _, fit_res in results
         ]
 
-        aggregated_parameters = ndarrays_to_parameters(aggregate(weights_results, w_error_norm))
+        aggregated_parameters = ndarrays_to_parameters(aggregate(weights_results, w_mix_norm))
 
         # Aggregate custom metrics if aggregation fn was provided
         aggregated_metrics = {}

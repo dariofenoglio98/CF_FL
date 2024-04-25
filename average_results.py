@@ -161,11 +161,15 @@ if args.training_type == "federated":
         hamm.append(d["Hamming"].values)
         rel_prox.append(d["Rel. Proximity"].values)
         # delede file
-        os.remove(f"results_fold_{i+1}.xlsx")
+        # os.remove(f"results_fold_{i+1}.xlsx")
         # read json
         with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_{i+1}.json', 'r') as f:
             plot_metrics.append(json.load(f))
             f.close()
+        
+    # delede
+    for i in range(args.K):
+        os.remove(f"results_fold_{i+1}.xlsx")
     
     # plot metrics
     utils.plot_mean_std_metrics(plot_metrics, config['image_folder']+f'server_side_{args.data_type}/KFold_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_metrics')

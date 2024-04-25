@@ -3,7 +3,7 @@
 
 # 2CLUSTER - BREAST
 model="net"
-data_type="2cluster"  # Options: "cluster", "2cluster", "random"
+data_type="random"  # Options: "cluster", "2cluster", "random"
 n_epochs=00
 n_rounds=200
 dataset="breast" # Options: "diabetes", "breast", "synthetic"
@@ -590,7 +590,7 @@ attack_type="DP_flip" # TO DO: "MP_noise", "MP_gradient", "DP_flip", "DP_inverte
 
 
 
-# # Parameters
+# Parameters
 # defense="ours" # TO DO: "median", "krum", "trim", "bulyan"        Options: "median", "ours", "krum", "trim", "bulyan"
 
 # trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
@@ -801,7 +801,7 @@ defense="ours" # TO DO: "median", "krum", "trim", "bulyan"        Options: "medi
 trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
 
 # Cross-validation
-for i in $(seq 5 $K); do
+for i in $(seq 1 $K); do
     echo -e "\n\033[1;36mStarting fold $i with model: $model, data_type: $data_type, epochs: $n_epochs, rounds $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
     # create data
     python data/client_split.py --seed "${seeds[i-1]}" --n_clients $n_clients
