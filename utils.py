@@ -1009,12 +1009,10 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     n = a.shape[0]
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
 
- 
-                    #wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
-                    # faster option: approximation of wasserstein distance
+                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
                     # Compute the regularized Wasserstein distance using the Sinkhorn algorithm
-                    lambda_reg = 0.01  # Regularization parameter
-                    wasserstein_distance = ot.sinkhorn2(w1, w2, cost_matrix, reg=lambda_reg)
+                    #lambda_reg = 0.01  # Regularization parameter
+                    #wasserstein_distance = ot.sinkhorn2(w1, w2, cost_matrix, reg=lambda_reg)
 
                     cf_matrix[i, j] = wasserstein_distance
             cf_matrix_median = np.median(cf_matrix)

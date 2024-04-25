@@ -199,28 +199,28 @@ class BulyanStrategy(FedAvg):
             # Save the model
             torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
         
-        # Perform evaluation on the server side on each single client after local training       
-        # for each clients evaluate the model
-        client_data = {}
-        for client, fit_res in results:
-            # Load model
-            params = fl.common.parameters_to_ndarrays(fit_res.parameters)
-            params_dict = zip(self.model.state_dict().keys(), params)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            cid = int(np.round(state_dict['cid'].item()))
-            # print(f"Server-side evaluation of client {cid}")
-            # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
-            self.model.load_state_dict(state_dict, strict=True)
-            # Evaluate the model
-            try:
-                client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
-                client_data[cid] = client_metrics
-            except Exception as e:
-                print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero metrics") 
+        # # Perform evaluation on the server side on each single client after local training       
+        # # for each clients evaluate the model
+        # client_data = {}
+        # for client, fit_res in results:
+        #     # Load model
+        #     params = fl.common.parameters_to_ndarrays(fit_res.parameters)
+        #     params_dict = zip(self.model.state_dict().keys(), params)
+        #     state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        #     cid = int(np.round(state_dict['cid'].item()))
+        #     # print(f"Server-side evaluation of client {cid}")
+        #     # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
+        #     self.model.load_state_dict(state_dict, strict=True)
+        #     # Evaluate the model
+        #     try:
+        #         client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+        #         client_data[cid] = client_metrics
+        #     except Exception as e:
+        #         print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero metrics") 
 
         
-        # Aggregate metrics
-        utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        # # Aggregate metrics
+        # utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
 
         return aggregated_parameters, metrics_aggregated
 
@@ -385,7 +385,7 @@ def main() -> None:
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
     
     # Create gif
-    utils.create_gif(args, config)
+    # utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()
