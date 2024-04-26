@@ -6,7 +6,7 @@ model="net"
 data_type="random"  # Options: "cluster", "2cluster", "random"
 n_epochs=00
 n_rounds=200
-dataset="breast" # Options: "diabetes", "breast", "synthetic"
+dataset="diabetes" # Options: "diabetes", "breast", "synthetic"
 n_clients=5
 n_attackers=1  # Adjust this as needed for testing attackers
 pers=0
@@ -386,34 +386,34 @@ attack_type="MP_gradient" # TO DO: "MP_noise", "MP_gradient", "DP_flip", "DP_inv
 
 
 
-# # Parameters
-# defense="ours" # TO DO: "median", "krum", "trim", "bulyan"        Options: "median", "ours", "krum", "trim", "bulyan"
+# Parameters
+defense="ours" # TO DO: "median", "krum", "trim", "bulyan"        Options: "median", "ours", "krum", "trim", "bulyan"
 
-# trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
+trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
 
-# # Cross-validation
-# for i in $(seq 1 $K); do
-#     echo -e "\n\033[1;36mStarting fold $i with model: $model, data_type: $data_type, epochs: $n_epochs, rounds $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
-#     # create data
-#     python data/client_split.py --seed "${seeds[i-1]}" --n_clients $n_clients
-#     # trainining type
-#     if [ "$training_type" == "privacy_intrusive" ]; then
-#         python privacy_intrusive_CL.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients 
-#     elif [ "$training_type" == "centralized" ]; then
-#         python centralized_learning.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients --glob_pred 0
-#     elif [ "$training_type" == "federated" ]; then
-#         bash run.sh --model "$model" --data_type "$data_type" --n_rounds "$n_rounds" --dataset "$dataset" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --pers "$pers" --fold "$i" --defense "$defense" 
-#         wait    
-#     else
-#         echo -e "\033[1;31mTraining type not recognized\033[0m"
-#         exit 1
-#     fi
-# done
+# Cross-validation
+for i in $(seq 1 $K); do
+    echo -e "\n\033[1;36mStarting fold $i with model: $model, data_type: $data_type, epochs: $n_epochs, rounds $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
+    # create data
+    python data/client_split.py --seed "${seeds[i-1]}" --n_clients $n_clients
+    # trainining type
+    if [ "$training_type" == "privacy_intrusive" ]; then
+        python privacy_intrusive_CL.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients 
+    elif [ "$training_type" == "centralized" ]; then
+        python centralized_learning.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients --glob_pred 0
+    elif [ "$training_type" == "federated" ]; then
+        bash run.sh --model "$model" --data_type "$data_type" --n_rounds "$n_rounds" --dataset "$dataset" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --pers "$pers" --fold "$i" --defense "$defense" 
+        wait    
+    else
+        echo -e "\033[1;31mTraining type not recognized\033[0m"
+        exit 1
+    fi
+done
 
-# # average results
-# python average_results.py  --K $K --model "$model" --data_type "$data_type" --dataset "$dataset"  --n_attackers $n_attackers --attack_type "$attack_type" --pers $pers --n_clients $n_clients --training_type "$training_type" --defense "$defense" --n_rounds $n_rounds
-# wait
-# sleep 10
+# average results
+python average_results.py  --K $K --model "$model" --data_type "$data_type" --dataset "$dataset"  --n_attackers $n_attackers --attack_type "$attack_type" --pers $pers --n_clients $n_clients --training_type "$training_type" --defense "$defense" --n_rounds $n_rounds
+wait
+sleep 10
 
 
 
@@ -795,34 +795,34 @@ attack_type="DP_inverted_loss" # TO DO: "MP_noise", "MP_gradient", "DP_flip", "D
 
 
 
-# Parameters
-defense="ours" # TO DO: "median", "krum", "trim", "bulyan"        Options: "median", "ours", "krum", "trim", "bulyan"
+# # Parameters
+# defense="ours" # TO DO: "median", "krum", "trim", "bulyan"        Options: "median", "ours", "krum", "trim", "bulyan"
 
-trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
+# trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM
 
-# Cross-validation
-for i in $(seq 1 $K); do
-    echo -e "\n\033[1;36mStarting fold $i with model: $model, data_type: $data_type, epochs: $n_epochs, rounds $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
-    # create data
-    python data/client_split.py --seed "${seeds[i-1]}" --n_clients $n_clients
-    # trainining type
-    if [ "$training_type" == "privacy_intrusive" ]; then
-        python privacy_intrusive_CL.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients 
-    elif [ "$training_type" == "centralized" ]; then
-        python centralized_learning.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients --glob_pred 0
-    elif [ "$training_type" == "federated" ]; then
-        bash run.sh --model "$model" --data_type "$data_type" --n_rounds "$n_rounds" --dataset "$dataset" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --pers "$pers" --fold "$i" --defense "$defense" 
-        wait    
-    else
-        echo -e "\033[1;31mTraining type not recognized\033[0m"
-        exit 1
-    fi
-done
+# # Cross-validation
+# for i in $(seq 1 $K); do
+#     echo -e "\n\033[1;36mStarting fold $i with model: $model, data_type: $data_type, epochs: $n_epochs, rounds $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
+#     # create data
+#     python data/client_split.py --seed "${seeds[i-1]}" --n_clients $n_clients
+#     # trainining type
+#     if [ "$training_type" == "privacy_intrusive" ]; then
+#         python privacy_intrusive_CL.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients 
+#     elif [ "$training_type" == "centralized" ]; then
+#         python centralized_learning.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients --glob_pred 0
+#     elif [ "$training_type" == "federated" ]; then
+#         bash run.sh --model "$model" --data_type "$data_type" --n_rounds "$n_rounds" --dataset "$dataset" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --pers "$pers" --fold "$i" --defense "$defense" 
+#         wait    
+#     else
+#         echo -e "\033[1;31mTraining type not recognized\033[0m"
+#         exit 1
+#     fi
+# done
 
-# average results
-python average_results.py --K $K --model "$model" --data_type "$data_type" --dataset "$dataset"  --n_attackers $n_attackers --attack_type "$attack_type" --pers $pers --n_clients $n_clients --training_type "$training_type" --defense "$defense" --n_rounds $n_rounds
-wait
-sleep 10
+# # average results
+# python average_results.py --K $K --model "$model" --data_type "$data_type" --dataset "$dataset"  --n_attackers $n_attackers --attack_type "$attack_type" --pers $pers --n_clients $n_clients --training_type "$training_type" --defense "$defense" --n_rounds $n_rounds
+# wait
+# sleep 10
 
 
 

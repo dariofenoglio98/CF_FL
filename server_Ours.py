@@ -107,9 +107,25 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
+        print(f"Original Size Server-Test Set: {self.X_test.shape}")
+
         if self.dataset == 'diabetes':
-            self.X_test = self.X_test[:4000]
-            self.y_test = self.y_test[:4000]
+            # randomly pick N samples <= 10605
+            idx = np.random.choice(len(self.X_test), 1000, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx]
+        elif self.dataset == 'breast':
+            # randomly pick N samples <= 89
+            idx = np.random.choice(len(self.X_test), 1000, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx] 
+        elif self.dataset == 'synthetic':
+            # randomly pick N samples <= 938
+            idx = np.random.choice(len(self.X_test), 800, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx]      
+        
+        print(f"Used Size Server-Test Set: {self.X_test.shape}")
 
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
