@@ -801,21 +801,25 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         client_to_skip = []
         # for client in sorted(client_data.keys()):
         for n, client in enumerate(client_data.keys()):
+            # check if client has only one error - to be skipped
+            if len(client_data[client]['errors']) == 1:
+                client_to_skip.append(n)
+                continue
             # check is nan values are present
             if torch.isnan(client_data[client]['errors']).any():
                 print(f"Client {client} has NaN values in errors")
-                client_data[client]['errors'] = [0]
+                client_to_skip.append(n)
+                continue
             if torch.isnan(client_data[client]['common_changes']).any():
                 print(f"Client {client} has NaN values in common changes")
-                client_data[client]['errors'] = [0]
+                client_to_skip.append(n)
+                continue
             if torch.isnan(client_data[client]['counterfactuals']).any():
                 print(f"Client {client} has NaN values in counterfactuals")
-                client_data[client]['errors'] = [0]
+                client_to_skip.append(n)
+                continue
             if torch.isnan(client_data[client]['dataset']).any():
                 print(f"Client {client} has NaN values in dataset")
-                client_data[client]['errors'] = [0]
-            # check if client has only one error - to be skipped
-            if len(client_data[client]['errors']) == 1:
                 client_to_skip.append(n)
                 continue
             # append tensors
