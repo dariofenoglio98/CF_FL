@@ -82,6 +82,12 @@ parser.add_argument(
     default=20,
     help="Specifies the number of rounds for federated learning",
 )
+parser.add_argument(
+        "--window_size",
+        type=int,
+        default=0,
+        help="Specifies the window size for moving average",
+    )
 args = parser.parse_args()
 
 print(f"\n\n\033[33mAveraging Results - K {args.K}\033[0m")
@@ -178,14 +184,14 @@ if args.training_type == "federated":
     d["Proximity"] = np.mean(prox, axis=0)
     d["Hamming"] = np.mean(hamm, axis=0)
     d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
-    d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}.xlsx")
+    d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
 
     # std results
     d_std = d.copy()
     d_std["Proximity"] = np.std(prox, axis=0)
     d_std["Hamming"] = np.std(hamm, axis=0)
     d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
-    d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}.xlsx")
+    d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
   
     # personalization
     if args.pers == 1:

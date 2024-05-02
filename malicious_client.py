@@ -48,7 +48,7 @@ class FlowerClient(fl.client.NumPyClient):
             # Introducing random noise to the parameters
             elif self.attack_type == "MP_noise":
                 v = v.cpu().numpy()
-                params.append(v + np.random.normal(0, 0.3*np.std(v), v.shape).astype(np.float32))
+                params.append(v + np.random.normal(0, 0.3*np.std(v), v.shape).astype(np.float32))   
             # Gradient-based attack - flip the sign of the gradient and scale it by a factor [adaptation of Fall of Empires]
             elif self.attack_type == "MP_gradient": # Fall of Empires
                 if config["current_round"] == 1:
@@ -193,7 +193,7 @@ def main()->None:
     # Start Flower client
     client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type,
                            train_fn, evaluate_fn, args.attack_type, config).to_client()
-    fl.client.start_client(server_address="[::]:8070", client=client) # local host
+    fl.client.start_client(server_address="[::]:8098", client=client) # local host
     #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 
     # read saved data and plot

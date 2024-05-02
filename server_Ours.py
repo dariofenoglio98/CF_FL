@@ -26,7 +26,7 @@ def fit_config(server_round: int):
     """Return training configuration dict for each round."""
     config = {
         "current_round": server_round,
-        "local_epochs": 4,
+        "local_epochs": 14,
         "tot_rounds": 20,
     }
     return config
@@ -72,31 +72,10 @@ def aggregate(results: List[Tuple[NDArrays, int]], scores: List) -> NDArrays:
     ]
     return weights_prime
 
-# def aggregate(results: List[Tuple[NDArrays, int]], scores: List) -> NDArrays:
-#     """Compute weighted average - with importance score."""
-    
-#     if len(results) != len(scores):
-#         raise ValueError("Each result must have a corresponding score.")
-
-#     # Calculate the total weight, which is the sum of products of the number of examples and scores
-#     total_weight = sum(num_examples * score for (_, num_examples), score in zip(results, scores))
-
-#     # Create a list of weighted weights, where each client's weights are multiplied by the number of examples and the score
-#     weighted_weights = [
-#         [layer * num_examples * score for layer in weights] 
-#         for (weights, num_examples), score in zip(results, scores)
-#     ]
-
-#     # Compute average weights of each layer
-#     weights_prime: NDArrays = [
-#         reduce(np.add, layer_updates) / total_weight
-#         for layer_updates in zip(*weighted_weights)
-#     ]
-#     return weights_prime
 
 # Custom strategy to save model after each round
 class SaveModelStrategy(fl.server.strategy.FedAvg):
-    def __init__(self, model, data_type, checkpoint_folder, dataset, fold, model_config, *args, **kwargs):
+    def __init__(self, model, data_type, checkpoint_folder, dataset, fold, model_config, window_size, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = model
         self.data_type = data_type
@@ -104,6 +83,8 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         self.dataset = dataset
         self.model_config = model_config
         self.fold = fold
+        self.client_memory = {}
+        self.window_size = window_size
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
@@ -114,11 +95,11 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             idx = np.random.choice(len(self.X_test), 1000, replace=False)
             self.X_test = self.X_test[idx]
             self.y_test = self.y_test[idx]
-        elif self.dataset == 'breast':
-            # randomly pick N samples <= 89
-            idx = np.random.choice(len(self.X_test), 1000, replace=False)
-            self.X_test = self.X_test[idx]
-            self.y_test = self.y_test[idx] 
+        # elif self.dataset == 'breast':
+        #     # randomly pick N samples <= 89
+        #     idx = np.random.choice(len(self.X_test), 1000, replace=False)
+        #     self.X_test = self.X_test[idx]
+        #     self.y_test = self.y_test[idx] 
         elif self.dataset == 'synthetic':
             # randomly pick N samples <= 938
             idx = np.random.choice(len(self.X_test), 800, replace=False)
@@ -130,6 +111,24 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
             os.makedirs(self.checkpoint_folder + f"{self.data_type}")
+
+    def calculate_moving_average(self, client_cid):
+        moving_averages = []
+        for cid in client_cid:
+            scores = []
+            for round in self.client_memory:
+                scores.append(self.client_memory[round].get(cid, []))
+            if scores:
+                # Calculate the moving average using a sliding window
+                # if a nan is present in the scores, assign 0
+                if any(np.isnan(score) for score in scores[-self.window_size:]):
+                    moving_averages.append(0)
+                else:
+                    moving_averages.append(sum(scores[-self.window_size:]) / min(len(scores), self.window_size))
+            else:
+                moving_averages.append(0)  # Default to 0 if no scores are available
+
+        return moving_averages
 
     # Override aggregate_fit method to add saving functionality
     def aggregate_fit(
@@ -143,19 +142,21 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         # Perform evaluation on the server side on each single client after local training       
         # for each clients evaluate the model
         client_data = {}
+        client_cid = []
         for client, fit_res in results:
             # Load model
             params = fl.common.parameters_to_ndarrays(fit_res.parameters)
             params_dict = zip(self.model.state_dict().keys(), params)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             cid = int(np.round(state_dict['cid'].item()))
+            client_cid.append(cid)
 
             # Check for NaN values in parameters
             if any(np.isnan(param).any() for param in params):
                 print(f"NaN values found in parameters of client {client.cid}, skipping this client - assigning zero weights")
                 client_data[cid] = {"errors":[0]}
             else:
-                # print(f"Server-side evaluation of client {cid}")
+                # print(f"Server-side evaluation of client {cid} and {client.cid}")
                 # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
                 self.model.load_state_dict(state_dict, strict=True)
                 # Evaluate the model
@@ -169,9 +170,25 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 # client_data[cid] = client_metrics
         # Aggregate metrics
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
-        # w_dist_norm = utils.normalize(w_dist)
-        # w_error_norm = utils.normalize(w_error)
-        w_mix_norm = utils.normalize(w_mix)
+        # score = utils.normalize(w_dist)
+        # score = utils.normalize(w_error)
+        score = utils.normalize(w_mix)
+
+        # update client memory
+        self.client_memory[server_round] = {}
+        for n, cid in enumerate(client_cid):
+            # self.client_memory[server_round][cid] = score[n]
+            if score[n] < 1e-6: 
+                self.client_memory[server_round][cid] = np.nan
+            else:
+                self.client_memory[server_round][cid] = score[n]
+            # print(f"Client {cid} has score {self.client_memory[server_round][cid]}")
+                    
+        # calculate moving average
+        moving_averages = self.calculate_moving_average(client_cid)
+        # print(f"Moving averages: {moving_averages}")
+        # print(f"Clients: {client_cid}")
+
 
         # Aggregations
         if not results:
@@ -186,7 +203,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             for _, fit_res in results
         ]
 
-        aggregated_parameters = ndarrays_to_parameters(aggregate(weights_results, w_mix_norm))
+        aggregated_parameters = ndarrays_to_parameters(aggregate(weights_results, moving_averages))
 
         # Aggregate custom metrics if aggregation fn was provided
         aggregated_metrics = {}
@@ -280,6 +297,12 @@ def main() -> None:
         default=0,
         help="Specifies the current fold of the cross-validation, if 0 no cross-validation is used",
     )
+    parser.add_argument(
+        "--window_size",
+        type=int,
+        default=10,
+        help="Specifies the window size for moving average",
+    )
     args = parser.parse_args()
 
     # Start time
@@ -312,11 +335,12 @@ def main() -> None:
         dataset=args.dataset,
         fold=args.fold,
         model_config=config,
+        window_size=args.window_size,
     )
 
     # Start Flower server for three rounds of federated learning
     history = fl.server.start_server(
-        server_address="0.0.0.0:8070",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
+        server_address="0.0.0.0:8098",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )

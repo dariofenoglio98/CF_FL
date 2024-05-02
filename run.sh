@@ -11,6 +11,7 @@ attack_type="DP_inverted_loss"
 pers=0
 fold=0
 defense="median" # Options: "median", "ours", "krum", "trim", "bulyan"
+window_size=5
 
 # Process command-line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -25,6 +26,7 @@ while [[ "$#" -gt 0 ]]; do
         --pers) pers="$2"; shift 2 ;;
         --fold) fold="$2"; shift 2 ;;
         --defense) defense="$2"; shift 2 ;;
+        --window_size) window_size="$2"; shift 2 ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
 done
@@ -51,7 +53,7 @@ if [ "$defense" == "median" ]; then
     python server_Median.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
 fi
 if [ "$defense" == "ours" ]; then
-    python server_Ours.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+    python server_Ours.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold --window_size $window_size  &
 fi
 if [ "$defense" == "none" ]; then
     python server.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
