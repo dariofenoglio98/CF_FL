@@ -48,7 +48,7 @@ class FlowerClient(fl.client.NumPyClient):
             # Introducing random noise to the parameters
             elif self.attack_type == "MP_noise":
                 v = v.cpu().numpy()
-                params.append(v + np.random.normal(0, 0.3*np.std(v), v.shape).astype(np.float32))   
+                params.append(v + np.random.normal(0, 1.2*np.std(v), v.shape).astype(np.float32))   
             # Gradient-based attack - flip the sign of the gradient and scale it by a factor [adaptation of Fall of Empires]
             elif self.attack_type == "MP_gradient": # Fall of Empires
                 if config["current_round"] == 1:
@@ -147,7 +147,7 @@ def main()->None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic'],
+        choices=['diabetes','breast','synthetic','mnist'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )

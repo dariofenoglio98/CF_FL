@@ -205,7 +205,7 @@ def main() -> None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic'],
+        choices=['diabetes','breast','synthetic','mnist'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )

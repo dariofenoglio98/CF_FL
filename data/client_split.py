@@ -46,9 +46,21 @@ if args.n_clients < 8:
     # add labels to X_breast with the same name as in df_train
     df_train_breast = pd.DataFrame(X_breast)
     df_train_breast['Labels'] = y_breast['Diagnosis']
+    # MNIST
+    x = np.load('data/train_features_FL.npy')
+    y = np.load('data/train_tasks_FL.npy')
+    # pick random 10000 indexes
+    idx = np.random.choice(x.shape[0], 10000, replace=False)
+    x = x[idx]
+    y = y[idx]
+    # create a unique dataset, with y=Labels and x=Features from 1 to 1000
+    df_MNIST = pd.DataFrame(x, columns=[str(i) for i in range(1000)])
+    df_MNIST['Labels'] = y
+    df_MNIST = df_MNIST.sample(frac=1).reset_index(drop=True)
 
     print(f"Diabetes dataset: {df_train.shape}")
     print(f"Breast cancer dataset: {df_train_breast.shape}")
+    print(f"MNIST dataset: {df_MNIST.shape}")
 
 
     # In[56]:
@@ -65,8 +77,14 @@ if args.n_clients < 8:
     XXX = XXX.drop(columns=["Unnamed: 0"])
     min_values_breast = XXX.min().values
     max_values_breast = XXX.max().values
-    print(f"Min values: {min_values_breast}")
-    print(f"Max values: {max_values_breast}")
+    print(f"Min values breast: {min_values_breast}")
+    print(f"Max values breast: {max_values_breast}")
+
+    XXXX = df_MNIST.drop('Labels', axis=1)
+    min_values_mnist = XXXX.min().values
+    max_values_mnist = XXXX.max().values
+    print(f"Min values MNIST: {min(min_values_mnist)}")
+    print(f"Max values MNIST: {max(max_values_mnist)}")
 
 
     # ### Random Subdivision 
@@ -90,11 +108,6 @@ if args.n_clients < 8:
         # Shuffle the DataFrame
         df_shuffled = df.sample(frac=1, random_state=seed).reset_index(drop=True)
 
-        # # Leave out 5% for testing
-        # df_train, df_test = train_test_split(df_shuffled, test_size=0.15, random_state=1)
-        # df_test.to_csv(file_prefix + '_random_test.csv', index=False)
-        # print(f'Saved: {file_prefix}_random_test.csv of shape {df_test.shape}')
-
         # Split the DataFrame into N parts
         df_splits = np.array_split(df_shuffled, N)
 
@@ -117,6 +130,8 @@ if args.n_clients < 8:
 
     random_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
     random_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+    random_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
+
 
 
     # ### Cluster based Subdivision
@@ -151,11 +166,6 @@ if args.n_clients < 8:
         [ 4.33080647, 32.17891945, 25.41195157],
         [27.11059815, 19.7759446 ,  8.12520036]])
         """
-
-        # # Leave out 5% for testing
-        # df_train, df_test = train_test_split(df_train, test_size=0.15, random_state=1)
-        # df_test.to_csv(file_prefix + '_2cluster_test.csv', index=False)
-        # print(f'Saved: {file_prefix}_2cluster_test.csv of shape {df_test.shape}')
 
         # Splitting the dataset by class
         df_train_0 = df[df['Labels'] == 0].drop('Labels', axis=1)
@@ -221,6 +231,7 @@ if args.n_clients < 8:
 
     cluster_by_class_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
     cluster_by_class_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+    cluster_by_class_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
 
 
     # In[63]:
@@ -236,11 +247,6 @@ if args.n_clients < 8:
         N (int): Number of clusters to form.
         file_prefix (str): Prefix for the output file names.
         """
-
-        # # Leave out 5% for testing
-        # df_train, df_test = train_test_split(df, test_size=0.15, random_state=1)
-        # df_test.to_csv(file_prefix + '_cluster_test.csv', index=False)
-        # print(f'Saved: {file_prefix}_cluster_test.csv of shape {df_test.shape}')
 
         # Perform KMeans clustering
         kmeans = KMeans(n_clusters=N, random_state=seed)
@@ -267,6 +273,8 @@ if args.n_clients < 8:
 
     cluster_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
     cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+    cluster_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
+
 
 
     # ## Data Poisoning - Attacker datasets
@@ -283,10 +291,13 @@ if args.n_clients < 8:
     max_values_diabetes = df_train.max().values
     min_values_breast = df_train_breast.min().values
     max_values_breast = df_train_breast.max().values
+    min_values_mnist = df_MNIST.min().values
+    max_values_mnist = df_MNIST.max().values
 
     # example for both datasets 
     df_diabetes = pd.read_csv('data/df_diabetes_random_1.csv')
     df_breast = pd.read_csv('data/df_breast_random_1.csv')
+    df_mnist = pd.read_csv('data/df_mnist_random_1.csv')
 
     def create_attackers_random(df, N_attackers, min, max, file_prefix='df_diabetes_random', seed=1):
         """
@@ -314,6 +325,8 @@ if args.n_clients < 8:
 
     create_attackers_random(df_diabetes, N_attackers, min_values_diabetes, max_values_diabetes, file_prefix='data/df_diabetes_random', seed=args.seed)
     create_attackers_random(df_breast, N_attackers, min_values_breast, max_values_breast, file_prefix='data/df_breast_random', seed=args.seed)
+    create_attackers_random(df_mnist, N_attackers, min_values_mnist, max_values_mnist, file_prefix='data/df_mnist_random', seed=args.seed)
+
 
 
 
@@ -336,14 +349,20 @@ if args.n_clients < 8:
     flip_client('data/df_breast_random_2')
     flip_client('data/df_diabetes_random_1')
     flip_client('data/df_diabetes_random_2')
+    flip_client('data/df_mnist_random_1')
+    flip_client('data/df_mnist_random_2')
     flip_client('data/df_breast_2cluster_1')
     flip_client('data/df_breast_2cluster_2')
     flip_client('data/df_diabetes_2cluster_1')
     flip_client('data/df_diabetes_2cluster_2')
+    flip_client('data/df_mnist_2cluster_1')
+    flip_client('data/df_mnist_2cluster_2')
     flip_client('data/df_breast_cluster_1')
     flip_client('data/df_breast_cluster_2')
     flip_client('data/df_diabetes_cluster_1')
     flip_client('data/df_diabetes_cluster_2')
+    flip_client('data/df_mnist_cluster_1')
+    flip_client('data/df_mnist_cluster_2')
 
 
     # ### Inverted Loss
@@ -364,14 +383,20 @@ if args.n_clients < 8:
     inverted_client('data/df_breast_random_2')
     inverted_client('data/df_diabetes_random_1')
     inverted_client('data/df_diabetes_random_2')
+    inverted_client('data/df_mnist_random_1')
+    inverted_client('data/df_mnist_random_2')
     inverted_client('data/df_breast_2cluster_1')
     inverted_client('data/df_breast_2cluster_2')
     inverted_client('data/df_diabetes_2cluster_1')
     inverted_client('data/df_diabetes_2cluster_2')
+    inverted_client('data/df_mnist_2cluster_1')
+    inverted_client('data/df_mnist_2cluster_2')
     inverted_client('data/df_breast_cluster_1')
     inverted_client('data/df_breast_cluster_2')
     inverted_client('data/df_diabetes_cluster_1')
     inverted_client('data/df_diabetes_cluster_2')
+    inverted_client('data/df_mnist_cluster_1')
+    inverted_client('data/df_mnist_cluster_2')
 
     # flip the labels CF
     def inverted_client(path):
@@ -386,14 +411,20 @@ if args.n_clients < 8:
     inverted_client('data/df_breast_random_2')
     inverted_client('data/df_diabetes_random_1')
     inverted_client('data/df_diabetes_random_2')
+    inverted_client('data/df_mnist_random_1')
+    inverted_client('data/df_mnist_random_2')
     inverted_client('data/df_breast_2cluster_1')
     inverted_client('data/df_breast_2cluster_2')
     inverted_client('data/df_diabetes_2cluster_1')
     inverted_client('data/df_diabetes_2cluster_2')
+    inverted_client('data/df_mnist_2cluster_1')
+    inverted_client('data/df_mnist_2cluster_2')
     inverted_client('data/df_breast_cluster_1')
     inverted_client('data/df_breast_cluster_2')
     inverted_client('data/df_diabetes_cluster_1')
     inverted_client('data/df_diabetes_cluster_2')
+    inverted_client('data/df_mnist_cluster_1')
+    inverted_client('data/df_mnist_cluster_2')
 
 
 ## Synthetic dataset

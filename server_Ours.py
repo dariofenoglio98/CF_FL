@@ -26,7 +26,7 @@ def fit_config(server_round: int):
     """Return training configuration dict for each round."""
     config = {
         "current_round": server_round,
-        "local_epochs": 14,
+        "local_epochs": 2,
         "tot_rounds": 20,
     }
     return config
@@ -92,7 +92,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         if self.dataset == 'diabetes':
             # randomly pick N samples <= 10605
-            idx = np.random.choice(len(self.X_test), 1000, replace=False)
+            idx = np.random.choice(len(self.X_test), 500, replace=False)
             self.X_test = self.X_test[idx]
             self.y_test = self.y_test[idx]
         # elif self.dataset == 'breast':
@@ -102,7 +102,12 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         #     self.y_test = self.y_test[idx] 
         elif self.dataset == 'synthetic':
             # randomly pick N samples <= 938
-            idx = np.random.choice(len(self.X_test), 800, replace=False)
+            idx = np.random.choice(len(self.X_test), 500, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx]
+        elif self.dataset == 'mnist':
+            # randomly pick N samples <= 938
+            idx = np.random.choice(len(self.X_test), 500, replace=False)
             self.X_test = self.X_test[idx]
             self.y_test = self.y_test[idx]      
         
@@ -170,9 +175,9 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 # client_data[cid] = client_metrics
         # Aggregate metrics
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
-        # score = utils.normalize(w_dist)
+        score = utils.normalize(w_dist)
         # score = utils.normalize(w_error)
-        score = utils.normalize(w_mix)
+        # score = utils.normalize(w_mix)
 
         # update client memory
         self.client_memory[server_round] = {}
@@ -253,7 +258,7 @@ def main() -> None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic'],
+        choices=['diabetes','breast','synthetic','mnist'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )
