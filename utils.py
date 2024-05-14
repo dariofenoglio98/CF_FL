@@ -1154,7 +1154,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
     print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
     if args.dataset == "diabetes" or args.dataset == "mnist":
-        idx = np.random.choice(len(X_train_rescaled_tot), 1000, replace=False)
+        idx = np.random.choice(len(X_train_rescaled_tot), 100, replace=False)
         mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[idx].cpu(), H2_test, y_train_tot[idx].cpu())
     else:
         mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
@@ -1162,7 +1162,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
     for i in range(n_clients):
         #print(len(X_train_rescaled[i][:-10]))
-        mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i][:1000].cpu(), H2_test, y_train_list[i][:1000].cpu())
+        mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i][:100].cpu(), H2_test, y_train_list[i][:100].cpu())
         print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
         mean_distance_list.append(mean_distance_n)
         hamming_prox_list.append(hamming_proxn)

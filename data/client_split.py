@@ -130,7 +130,7 @@ if args.n_clients < 8:
 
     random_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
     random_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
-    random_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
+    # random_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
 
 
 
@@ -231,7 +231,7 @@ if args.n_clients < 8:
 
     cluster_by_class_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
     cluster_by_class_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
-    cluster_by_class_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
+    # cluster_by_class_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
 
 
     # In[63]:
@@ -273,7 +273,7 @@ if args.n_clients < 8:
 
     cluster_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
     cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
-    cluster_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
+    # cluster_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
 
 
 
@@ -325,7 +325,7 @@ if args.n_clients < 8:
 
     create_attackers_random(df_diabetes, N_attackers, min_values_diabetes, max_values_diabetes, file_prefix='data/df_diabetes_random', seed=args.seed)
     create_attackers_random(df_breast, N_attackers, min_values_breast, max_values_breast, file_prefix='data/df_breast_random', seed=args.seed)
-    create_attackers_random(df_mnist, N_attackers, min_values_mnist, max_values_mnist, file_prefix='data/df_mnist_random', seed=args.seed)
+    # create_attackers_random(df_mnist, N_attackers, min_values_mnist, max_values_mnist, file_prefix='data/df_mnist_random', seed=args.seed)
 
 
 
@@ -349,20 +349,20 @@ if args.n_clients < 8:
     flip_client('data/df_breast_random_2')
     flip_client('data/df_diabetes_random_1')
     flip_client('data/df_diabetes_random_2')
-    flip_client('data/df_mnist_random_1')
-    flip_client('data/df_mnist_random_2')
+    # flip_client('data/df_mnist_random_1')
+    # flip_client('data/df_mnist_random_2')
     flip_client('data/df_breast_2cluster_1')
     flip_client('data/df_breast_2cluster_2')
     flip_client('data/df_diabetes_2cluster_1')
     flip_client('data/df_diabetes_2cluster_2')
-    flip_client('data/df_mnist_2cluster_1')
-    flip_client('data/df_mnist_2cluster_2')
+    # flip_client('data/df_mnist_2cluster_1')
+    # flip_client('data/df_mnist_2cluster_2')
     flip_client('data/df_breast_cluster_1')
     flip_client('data/df_breast_cluster_2')
     flip_client('data/df_diabetes_cluster_1')
     flip_client('data/df_diabetes_cluster_2')
-    flip_client('data/df_mnist_cluster_1')
-    flip_client('data/df_mnist_cluster_2')
+    # flip_client('data/df_mnist_cluster_1')
+    # flip_client('data/df_mnist_cluster_2')
 
 
     # ### Inverted Loss
@@ -383,20 +383,20 @@ if args.n_clients < 8:
     inverted_client('data/df_breast_random_2')
     inverted_client('data/df_diabetes_random_1')
     inverted_client('data/df_diabetes_random_2')
-    inverted_client('data/df_mnist_random_1')
-    inverted_client('data/df_mnist_random_2')
+    # inverted_client('data/df_mnist_random_1')
+    # inverted_client('data/df_mnist_random_2')
     inverted_client('data/df_breast_2cluster_1')
     inverted_client('data/df_breast_2cluster_2')
     inverted_client('data/df_diabetes_2cluster_1')
     inverted_client('data/df_diabetes_2cluster_2')
-    inverted_client('data/df_mnist_2cluster_1')
-    inverted_client('data/df_mnist_2cluster_2')
+    # inverted_client('data/df_mnist_2cluster_1')
+    # inverted_client('data/df_mnist_2cluster_2')
     inverted_client('data/df_breast_cluster_1')
     inverted_client('data/df_breast_cluster_2')
     inverted_client('data/df_diabetes_cluster_1')
     inverted_client('data/df_diabetes_cluster_2')
-    inverted_client('data/df_mnist_cluster_1')
-    inverted_client('data/df_mnist_cluster_2')
+    # inverted_client('data/df_mnist_cluster_1')
+    # inverted_client('data/df_mnist_cluster_2')
 
     # flip the labels CF
     def inverted_client(path):
@@ -411,20 +411,20 @@ if args.n_clients < 8:
     inverted_client('data/df_breast_random_2')
     inverted_client('data/df_diabetes_random_1')
     inverted_client('data/df_diabetes_random_2')
-    inverted_client('data/df_mnist_random_1')
-    inverted_client('data/df_mnist_random_2')
+    # inverted_client('data/df_mnist_random_1')
+    # inverted_client('data/df_mnist_random_2')
     inverted_client('data/df_breast_2cluster_1')
     inverted_client('data/df_breast_2cluster_2')
     inverted_client('data/df_diabetes_2cluster_1')
     inverted_client('data/df_diabetes_2cluster_2')
-    inverted_client('data/df_mnist_2cluster_1')
-    inverted_client('data/df_mnist_2cluster_2')
+    # inverted_client('data/df_mnist_2cluster_1')
+    # inverted_client('data/df_mnist_2cluster_2')
     inverted_client('data/df_breast_cluster_1')
     inverted_client('data/df_breast_cluster_2')
     inverted_client('data/df_diabetes_cluster_1')
     inverted_client('data/df_diabetes_cluster_2')
-    inverted_client('data/df_mnist_cluster_1')
-    inverted_client('data/df_mnist_cluster_2')
+    # inverted_client('data/df_mnist_cluster_1')
+    # inverted_client('data/df_mnist_cluster_2')
 
 
 ## Synthetic dataset

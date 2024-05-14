@@ -25,7 +25,7 @@ parser.add_argument(
 parser.add_argument(
     "--data_type",
     type=str,
-    choices=['random','cluster','2cluster'],
+    choices=['random','cluster','2cluster', 'mnist'],
     default='random',
     help="Specifies the type of data partition",
 )

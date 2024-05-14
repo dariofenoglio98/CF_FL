@@ -175,9 +175,9 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 # client_data[cid] = client_metrics
         # Aggregate metrics
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
-        score = utils.normalize(w_dist)
+        # score = utils.normalize(w_dist)
         # score = utils.normalize(w_error)
-        # score = utils.normalize(w_mix)
+        score = utils.normalize(w_mix)
 
         # update client memory
         self.client_memory[server_round] = {}
