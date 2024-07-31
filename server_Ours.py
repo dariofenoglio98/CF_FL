@@ -1,3 +1,23 @@
+"""
+This code creates our custom strategy for the Flower server, called Federated Behavioural Shields. The strategy is based
+on the information extracted from the Federated Behavioural Planes (Error and Counterfactuls). If simpler version of
+our strategy is needed (i.e., only the error or counterfactuals), the code can be easily modified by changing the
+score in line ~197 to the desired metric (decomment proper line). 
+Similarly, if the moving average is not needed, the code can be simplified by removing the moving average calculation
+in line ~208
+
+When it starts, the server waits for the clients to connect. When the established number of clients is reached, the 
+learning process starts. The server sends the model to the clients, and the clients train the model locally. After training,
+the clients send the updated model back to the server. The server evaluate the client models on the clean validation set
+to create the Federated Behavioural Planes. Then, leveraging on this information, the server calculates the score for each
+client. The score is used to perform the aggregation. The aggregated model is then sent to the clients for the next round
+of training. The server saves the model and metrics after each round.
+
+This is code is set to be used locally, but it can be used in a distributed environment by changing the server_address.
+In a distributed environment, the server_address should be the IP address of the server, and each client machine should 
+run the appopriate client code (client.py).
+"""
+
 # Libraries
 import flwr as fl
 import numpy as np
@@ -92,22 +112,27 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         if self.dataset == 'diabetes':
             # randomly pick N samples <= 10605
-            idx = np.random.choice(len(self.X_test), 500, replace=False)
+            idx = np.random.choice(len(self.X_test), 800, replace=False)
             self.X_test = self.X_test[idx]
             self.y_test = self.y_test[idx]
-        # elif self.dataset == 'breast':
-        #     # randomly pick N samples <= 89
-        #     idx = np.random.choice(len(self.X_test), 1000, replace=False)
-        #     self.X_test = self.X_test[idx]
-        #     self.y_test = self.y_test[idx] 
+        elif self.dataset == 'breast':
+            # randomly pick N samples <= 89
+            idx = np.random.choice(len(self.X_test), 88, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx] 
         elif self.dataset == 'synthetic':
             # randomly pick N samples <= 938
-            idx = np.random.choice(len(self.X_test), 500, replace=False)
+            idx = np.random.choice(len(self.X_test), 300, replace=False)
             self.X_test = self.X_test[idx]
             self.y_test = self.y_test[idx]
         elif self.dataset == 'mnist':
             # randomly pick N samples <= 938
-            idx = np.random.choice(len(self.X_test), 500, replace=False)
+            idx = np.random.choice(len(self.X_test), 300, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx]  
+        elif self.dataset == 'cifar10':
+            # randomly pick N samples <= 938
+            idx = np.random.choice(len(self.X_test), 300, replace=False)
             self.X_test = self.X_test[idx]
             self.y_test = self.y_test[idx]      
         
@@ -161,8 +186,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 print(f"NaN values found in parameters of client {client.cid}, skipping this client - assigning zero weights")
                 client_data[cid] = {"errors":[0]}
             else:
-                # print(f"Server-side evaluation of client {cid} and {client.cid}")
-                # print(f"Server-side evaluation of client {client.cid}") #grpcClientProxy does not reflect client.cid from client-side
                 self.model.load_state_dict(state_dict, strict=True)
                 # Evaluate the model
                 try:
@@ -171,28 +194,24 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 except Exception as e:
                     print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero weights") 
                     client_data[cid] = {"errors":[0]}
-                # client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
-                # client_data[cid] = client_metrics
+
         # Aggregate metrics
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
-        # score = utils.normalize(w_dist)
-        # score = utils.normalize(w_error)
+        # score = utils.normalize(w_dist)  # counterfactual score
+        # score = utils.normalize(w_error) # error score
         score = utils.normalize(w_mix)
 
         # update client memory
         self.client_memory[server_round] = {}
         for n, cid in enumerate(client_cid):
-            # self.client_memory[server_round][cid] = score[n]
             if score[n] < 1e-6: 
                 self.client_memory[server_round][cid] = np.nan
             else:
                 self.client_memory[server_round][cid] = score[n]
-            # print(f"Client {cid} has score {self.client_memory[server_round][cid]}")
                     
         # calculate moving average
         moving_averages = self.calculate_moving_average(client_cid)
-        # print(f"Moving averages: {moving_averages}")
-        # print(f"Clients: {client_cid}")
+        print(f"Moving averages: {moving_averages}")
 
 
         # Aggregations
@@ -217,7 +236,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             aggregated_metrics = self.fit_metrics_aggregation_fn(fit_metrics)
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
-        # aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
 
         # Save model
         if aggregated_parameters is not None:
@@ -232,7 +250,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             # Save the model
             torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
         
-
         return aggregated_parameters, aggregated_metrics
 
 
@@ -258,7 +275,7 @@ def main() -> None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic','mnist'],
+        choices=['diabetes','breast','synthetic','mnist','cifar10'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )
@@ -345,7 +362,7 @@ def main() -> None:
 
     # Start Flower server for three rounds of federated learning
     history = fl.server.start_server(
-        server_address="0.0.0.0:8098",   # my IP 10.21.13.112 - 0.0.0.0 listens to all available interfaces
+        server_address="0.0.0.0:8098",   # 0.0.0.0 listens to all available interfaces
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )
@@ -396,7 +413,7 @@ def main() -> None:
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
     
     # Create gif
-    # utils.create_gif(args, config)
+    utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()

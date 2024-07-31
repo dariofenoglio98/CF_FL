@@ -1,3 +1,8 @@
+"""
+This code comprises most of the functions used in the project.    
+"""
+
+
 # Libraries
 import torch
 import torch.nn as nn
@@ -16,6 +21,7 @@ import imageio
 import seaborn as sns
 from collections import OrderedDict
 from scipy.spatial.distance import cdist
+from sklearn.manifold import TSNE
 
 
 def update_and_freeze_predictor_weights(model, dataset="synthetic", data_type="random"):
@@ -74,8 +80,7 @@ def randomize_class(a, include=True):
         # Generate random indices for each row to place 1s, excluding the original positions
         random_indices = torch.randint(0, num_classes, (num_samples,)).to(a.device)
 
-        # Ensure that the generated indices are different from the original positions
-        # TODO we inclue also same label to make sure that every class is represented 
+        # Ensure that the generated indices are different from the original positions 
         if not include:
             original_indices = a.argmax(dim=1)
             random_indices = torch.where(random_indices == original_indices, (random_indices + 1) % num_classes, random_indices)
@@ -152,9 +157,6 @@ class Net(nn.Module,):
         # decoder
         x_reconstructed = self.decoder(z2)
         x_reconstructed = F.hardtanh(x_reconstructed, -0.1, 1.1)
-        # x_reconstructed = torch.clamp(x_reconstructed, min=0, max=1) 
-        #x_reconstructed[:, self.binary_feature] = torch.sigmoid(x_reconstructed[:, self.binary_feature])
-        #x_reconstructed[:, ~self.binary_feature] = torch.clamp(x_reconstructed[:, ~self.binary_feature], min=0, max=1)
 
         y_prime = randomize_class((out).float(), include=include)
         
@@ -191,10 +193,6 @@ class Net(nn.Module,):
 
         mask[:, self.binary_feature] = (mask[:, self.binary_feature] > 0.5).float()
         
-        # x_prime_reconstructed = x_prime_reconstructed * (1 - mask) + (x * mask) #
-        #x_prime_reconstructed[:, self.binary_feature] = torch.sigmoid(x_prime_reconstructed[:, self.binary_feature])
-        #x_prime_reconstructed[:, ~self.binary_feature] = torch.clamp(x_prime_reconstructed[:, ~self.binary_feature], min=0, max=1)
-        #x_prime_reconstructed = x_prime_reconstructed * (1 - self.mask) + (x * self.mask)
         if not self.training:
             x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=-0.03, max=1.03)
             if self.round:
@@ -447,7 +445,7 @@ def train(model, loss_fn, optimizer, X_train, y_train, X_val, y_val, n_epochs=50
             best_loss = val_loss[-1]
             model_best = copy.deepcopy(model)
             
-        if epoch % 50 == 0: # and print_info:
+        if epoch % 10 == 0: # and print_info:
             print('Epoch {:4d} / {}, Cost : {:.4f}, Acc : {:.2f} %, Validity : {:.2f} %, Val Cost : {:.4f}, Val Acc : {:.2f} % , Val Validity : {:.2f} %'.format(
                 epoch, n_epochs, loss.item(), acc*100, acc_prime*100, loss_val.item(), acc_val*100, acc_prime_val*100))
         
@@ -608,7 +606,7 @@ def load_data_malicious(client_id="1",device="cpu", type='random', dataset="diab
     X = df_train.drop('Labels', axis=1)
     y = df_train['Labels']
     # Use 10 % of total data as Test set and the rest as (Train + Validation) set 
-    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.001) # use only 0.1% of the data as test set - i dont perform validation on client test set
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.001) # use only 0.1% of the data as test set - we dont perform validation on client test set
     # Use 20 % of (Train + Validation) set as Validation set
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2)
     num_examples = {'trainset':len(X_train), 'valset':len(X_val), 'testset':len(X_test)}
@@ -763,7 +761,6 @@ def server_side_evaluation(X_test, y_test, model=None, config=None):
 
             # compute common changes
             common_changes = (x_prime - X_test)
-            # common_changes = (x_prime != X_test).sum(dim=-1).float()
             client_metrics['common_changes'] = common_changes
             client_metrics['counterfactuals'] = x_prime
             client_metrics['dataset'] = X_test
@@ -867,7 +864,6 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         #             b = np.array(common_changes_pca[j])
         #             # print(a.shape, b.shape)
         #             # kl = kl_divergence(a, b)
-        #             # print(kl)
         #             cost_matrix = ot.dist(a, b, metric='euclidean')
  
         #             # Compute the Wasserstein distance
@@ -875,13 +871,14 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         #             n = a.shape[0]
         #             w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
  
-        #             wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
+        #             # wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000) 
+                    
         #             dist_matrix[i, j] = wasserstein_distance
         #     dist_matrix_median = np.median(dist_matrix)
-        #     # print(dist_matrix_median)
         #     dist_matrix = dist_matrix / dist_matrix_median
         #     np.save(f"results/{model_name}/{dataset}/{data_type}/{fold}/dist_matrix_{server_round}{add_name}.npy", dist_matrix)
         pca = PCA(n_components=2, random_state=42)
+        n_projections_arr = np.logspace(0, 3, 10, dtype=int)
         _ = pca.fit_transform(samples[0].cpu().detach().numpy())
         counterfactuals_pca = np.zeros((counterfactuals.shape[0], counterfactuals.shape[1], 2))
         for i, el in enumerate(counterfactuals):
@@ -898,21 +895,19 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
                     b = np.array(counterfactuals_pca[j])
                     #print(a.shape, b.shape)
                     # kl = kl_divergence(a, b)
-                    # print(kl)
                     # cost_matrix = ot.dist(a, b, metric='euclidean')
-                    cost_matrix = cdist(a, b, metric='euclidean')
+                    # cost_matrix = cdist(a, b, metric='euclidean')    #--- we were using this before
  
                     # Compute the Wasserstein distance
                     # For simplicity, assume uniform distribution of weights
                     n = a.shape[0]
                     w1, w2 = np.ones((n,)) / n, np.ones((n,)) / n  # Uniform distribution
 
-                    wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=200000)
-                    # Compute the regularized Wasserstein distance using the Sinkhorn algorithm
-                    #lambda_reg = 0.01  # Regularization parameter
-                    #wasserstein_distance = ot.sinkhorn2(w1, w2, cost_matrix, reg=lambda_reg)
+                    # wasserstein_distance = ot.emd2(w1, w2, cost_matrix, numItermax=2000)   #--- we were using this before
+                    wasserstein_distance = ot.sliced_wasserstein_distance(a, b, w1, w2, seed=42)
 
                     cf_matrix[i, j] = wasserstein_distance
+                    
             cf_matrix_median = np.median(cf_matrix)
             # print(cf_matrix_median)
             cf_matrix = cf_matrix / cf_matrix_median
@@ -960,8 +955,8 @@ def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: tor
     y_set_ext = y_set.repeat(y.shape[0], 1, 1)
     filter = y_ext.argmax(dim=-1) != y_set_ext.argmax(dim=-1)
 
-    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float) # !!!!! dist = (a_ext != b_ext).sum(dim=-1, dtype=torch.float)
-    dist[filter] = 100000000 # !!!!! dist[filter] = a.shape[-1]; min_distances = torch.min(dist, dim=-1)[0]
+    dist = (torch.abs(a_ext - b_ext)).sum(dim=-1, dtype=torch.float) 
+    dist[filter] = 100000000 
     min_distances, min_index = torch.min(dist, dim=-1)
 
     ham_dist = ((a_ext != b_ext)).float().sum(dim=-1, dtype=torch.float)
@@ -975,15 +970,12 @@ def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: tor
     return min_distances.mean().cpu().item(), min_distances_ham.mean().cpu().item(), min_distances_rel.mean().cpu().item()
 
 def variability(a: torch.Tensor, b: torch.Tensor):
-    bool_a = a # > 0.5   !!!!!!
-    # bool_b = b # > 0.5
+    bool_a = a 
     unique_a = set([tuple(i) for i in bool_a.cpu().detach().numpy()])
-    # unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
-    # return len(unique_a) / len(unique_b) if len(unique_b) else -1
     return len(unique_a) / a.shape[0]
 
 def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
-    bool_a = a # > 0.5   !!!!!!
+    bool_a = a 
     bool_b = b # > 0.5
     unique_a = set([tuple(i) for i in bool_a.cpu().detach().numpy()])
     unique_b = set([tuple(i) for i in bool_b.cpu().detach().numpy()])
@@ -1032,11 +1024,6 @@ def create_dynamic_df(num_clients, validity, accuracy, loss, mean_distance,
     return df
 
 def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name='', loss_fn=torch.nn.CrossEntropyLoss()):
-    # read arguments
-    # if centralized:
-    #     n_clients=args.n_clients
-    # else:
-    #     n_clients=args.n_clients-args.n_attackers
     n_clients=args.n_clients
     data_type=args.data_type
     dataset=args.dataset
@@ -1048,7 +1035,6 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     X_train_rescaled, X_train_list, y_train_list = [], [], []
     for i in range(1, n_clients+1):
         X_train, y_train, _, _, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
-        #X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
         aux = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset)
         if config["output_round"]:
             X_train_rescaled.append(torch.Tensor(np.round(aux)))
@@ -1060,7 +1046,6 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     X_train_rescaled_tot, y_train_tot = (torch.cat(X_train_rescaled), torch.cat(y_train_list))
 
     # load data
-    #df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv").astype(int)
     df_test = pd.read_csv(f"data/df_{dataset}_{data_type}_test.csv")
     if dataset == "breast":
         df_test = df_test.drop(columns=["Unnamed: 0"])
@@ -1137,7 +1122,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print(f"Counterfactual accuracy: {accuracy:.4f}")
     print(f"Counterfactual loss: {loss:.4f}")
 
-    # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
+    # evaluate distance -
     # print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
     # if args.dataset == "niente":
     #     mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-30000].cpu(), H2_test, y_train_tot[:-30000].cpu())
@@ -1152,8 +1137,9 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     #     hamming_prox_list.append(hamming_proxn)
     #     relative_prox_list.append(relative_proxn)
     # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
-    print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-    if args.dataset == "diabetes" or args.dataset == "mnist":
+
+    print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m") # Faster evaluation - Not used in the paper for validation - remove sample reduction for consistent evaluation
+    if args.dataset == "diabetes" or args.dataset == "mnist" or args.dataset == "cifar10":
         idx = np.random.choice(len(X_train_rescaled_tot), 100, replace=False)
         mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[idx].cpu(), H2_test, y_train_tot[idx].cpu())
     else:
@@ -1161,7 +1147,6 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
     mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
     for i in range(n_clients):
-        #print(len(X_train_rescaled[i][:-10]))
         mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i][:100].cpu(), H2_test, y_train_list[i][:100].cpu())
         print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
         mean_distance_list.append(mean_distance_n)
@@ -1186,28 +1171,9 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
                       mean_distance_list, hamming_prox, hamming_prox_list,
                       hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, best_model_round)
 
-    # # save metrics csv file
-    # data = pd.DataFrame({
-    #     "validity": [validity],
-    #     "mean_distance": [mean_distance],
-    #     "hamming_prox": [hamming_prox],
-    #     "relative_prox": [relative_prox],
-    #     "mean_distance_one_trainset": [mean_distance_list],
-    #     "hamming_prox_one_trainset": [hamming_prox_list],
-    #     "relative_prox_one_trainset": [relative_prox_list],
-    #     "hamming_distance": [hamming_distance],
-    #     "euclidean_distance": [euclidean_distance],
-    #     "relative_distance": [relative_distance],
-    #     "iou": [iou],
-    #     "var": [var]
-    # })
-
     # create folder
     if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
         os.makedirs(config['history_folder'] + f"server_{data_type}/")
-
-    # save to csv
-    # data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL{add_name}.csv")
 
     # Creating the DataFrame
     df = pd.DataFrame(df)
@@ -1242,7 +1208,7 @@ def visualize_examples(H_test, H2_test, x_prime_rescaled, y_prime, X_test_rescal
        'symmetry3', 'fractal_dimension3'] 
     elif dataset == "synthetic":
         features = ['x1', 'x2','x3']
-    elif dataset == "mnist":
+    elif dataset == "mnist" or dataset == "cifar10":
         skip = True
     else:
         # raise error: "Error: dataset not found in visualize_examples"
@@ -1274,7 +1240,7 @@ def check_gpu(manual_seed=True, print_info=True):
     if torch.cuda.is_available():
         if print_info:
             print("CUDA is available")
-        device = 'cuda'
+        device = 'cuda:1'
         torch.cuda.manual_seed_all(0) 
     elif torch.backends.mps.is_available():
         if print_info:
@@ -1761,7 +1727,6 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
     X_train_rescaled, X_train_list, X_val_list, y_train_list, y_val_list = [], [], [], [], []
     for i in range(1, n_clients_honest+1):
         X_train, y_train, X_val, y_val, _, _, _ = load_data(client_id=str(i),device=device, type=data_type, dataset=dataset)
-        #X_train_rescaled.append(torch.Tensor(np.round(inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset))))
         aux = inverse_min_max_scaler(X_train.detach().cpu().numpy(), dataset=dataset)
         if config["output_round"]:
             X_train_rescaled.append(torch.Tensor(np.round(aux)))
@@ -1920,28 +1885,9 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                       mean_distance_list, hamming_prox, hamming_prox_list,
                       hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, None)
 
-                # # save metrics csv file
-                # data = pd.DataFrame({
-                #     "validity": [validity],
-                #     "mean_distance": [mean_distance],
-                #     "hamming_prox": [hamming_prox],
-                #     "relative_prox": [relative_prox],
-                #     "mean_distance_one_trainset": [mean_distance_list],
-                #     "hamming_prox_one_trainset": [hamming_prox_list],
-                #     "relative_prox_one_trainset": [relative_prox_list],
-                #     "hamming_distance": [hamming_distance],
-                #     "euclidean_distance": [euclidean_distance],
-                #     "relative_distance": [relative_distance],
-                #     "iou": [iou],
-                #     "var": [var]
-                # })
-
                 # create folder
                 if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
                     os.makedirs(config['history_folder'] + f"server_{data_type}/")
-
-                # save to csv
-                # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{c+1}/metrics_personalization.csv")
 
                 # Creating the DataFrame
                 df = pd.DataFrame(df)
@@ -2111,13 +2057,6 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
     if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
         os.makedirs(config['history_folder'] + f"server_{data_type}/")
 
-    # save to csv
-    # data.to_csv(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.csv")
-
-    # Creating the DataFrame
-    # df = pd.DataFrame(df)
-    # df.set_index('Label', inplace=True)
-    # df.to_excel(f"histories/{dataset}/{model_name}/client_{data_type}_{client_id}/metrics_personalization_single_evaluation{add_name}.xlsx")
 
 def load_files(path, start):
     data = []
@@ -2137,6 +2076,85 @@ def load_files(path, start):
         df = np.load(os.path.join(path, file[0]))
         data.append(df)
     return data
+
+# def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=None, attack_type=None):
+#     if not os.path.exists(os.path.join(path, f'{name}')):
+#         os.makedirs(os.path.join(path, f'{name}'))
+#     else:
+#         for file in os.listdir(os.path.join(path, f'{name}')):
+#             os.remove(os.path.join(path, f'{name}', file))
+#     images = []
+#     data_array = np.concatenate([np.expand_dims(el, axis=0) for el in data])
+#     if worst_errors is not None:
+#         worst_errors = np.concatenate([np.expand_dims(el, axis=0) for el in worst_errors])
+#         data_array = np.concatenate([data_array, worst_errors], axis=1)
+#     max_x = np.max(data_array[:, :, 0])
+#     max_x = max_x + np.abs(max_x)
+#     min_x = np.min(data_array[:, :, 0])
+#     min_x = min_x - np.abs(min_x)
+#     max_y = np.max(data_array[:, :, 1])
+#     max_y = max_y + np.abs(max_y)
+#     min_y = np.min(data_array[:, :, 1])
+#     min_y = min_y - np.abs(min_y)
+#     plt.close()
+#     for i in tqdm(range(len(data))):
+#         if name in ['changes', 'counter']:
+#             if i % 10 == 0:
+#                 for j in range(len(data[i])):
+#                     if j >= len(data[i])-n_attackers:
+#                         color = 'red'
+#                     else:
+#                         color = 'black'
+#                     sns.kdeplot(x=data[i][j][:, 0], y=data[i][j][:, 1], color=color)
+#                     # show legend in all plots
+#                 # xlim = (min_x, max_x)
+#                 # ylim = (min_y, max_y)
+#                 # plt.xlim(xlim)
+#                 # plt.ylim(ylim)
+#                 plt.xlabel('x1')
+#                 plt.ylabel('x2')
+#             else:
+#                 continue
+#         elif name in ['matrix', 'cf_matrix']:
+#             sns.heatmap(data[i], cmap='viridis')
+#             plt.xlabel('Clients')
+#             plt.ylabel('Clients')
+#         else:
+#             color = ['black']*(data[i].shape[0]-n_attackers) + ['red']*n_attackers
+#             for j, _ in enumerate(data[i]):
+#                 # plt.scatter(data[i][:, 0], data[i][:, 1], c=color)
+#                 plt.annotate(str(j), (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,10), ha='center', color=color[j])
+#             # plt.scatter(worst_errors[i][:, 0], worst_errors[i][:, 1], alpha=0.3)
+#             # show legend in all plots
+#             min_x = min(-0.1, min_x)
+#             max_x = max(0.1, max_x)
+#             min_y = min(-0.1, min_y)
+#             max_y = max(0.1, max_y)
+#             xlim = (min_x, max_x)
+#             ylim = (min_y, max_y)
+#             plt.xlim(xlim)
+#             plt.ylim(ylim)
+#             plt.xlabel('x1')
+#             plt.ylabel('x2')
+#         if name in ['matrix', 'cf_matrix']:
+#             i_tmp = (i + 1)*10
+#         else:
+#             i_tmp = i + 1
+#         if i_tmp >= rounds:
+#             plt.title('Iteration {} Personalisation'.format(i_tmp-rounds))
+#         else:
+#             plt.title('Iteration {}'.format(i_tmp))
+#         plt.savefig(os.path.join(path, f'{name}/iteration_{i}.png'))
+#         plt.close()
+#     files = []
+#     for file in os.listdir(os.path.join(path, f'{name}')):
+#         file_n = file.split('_')[-1].split('.')[0]
+#         files.append((file, int(file_n)))
+#     files.sort(key=lambda x: x[1])
+#     for file in files:
+#         images.append(imageio.imread(os.path.join(path, f'{name}', file[0])))
+#     imageio.mimsave(os.path.join(path, f'evolution_{name}_{attack_type}_{n_attackers}.gif'), images, duration=1)
+
 
 def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=None, attack_type=None):
     if not os.path.exists(os.path.join(path, f'{name}')):
@@ -2158,11 +2176,14 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=No
     min_y = np.min(data_array[:, :, 1])
     min_y = min_y - np.abs(min_y)
     plt.close()
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams.update({'font.size': 30})
+    plt.rcParams["figure.figsize"] = (10,10)
     for i in tqdm(range(len(data))):
         if name in ['changes', 'counter']:
             if i % 10 == 0:
                 for j in range(len(data[i])):
-                    if j >= len(data[i])-n_attackers:
+                    if j >= len(data[i])-n_attackers and j != len(data[i])-1:
                         color = 'red'
                     else:
                         color = 'black'
@@ -2174,16 +2195,21 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=No
                 # plt.ylim(ylim)
                 plt.xlabel('x1')
                 plt.ylabel('x2')
+                plt.title('Counterfactuals Distribution Space')
             else:
                 continue
         elif name in ['matrix', 'cf_matrix']:
-            sns.heatmap(data[i], cmap='viridis')
+            sns.heatmap(data[i][:-1, :-1], cmap='viridis')
             plt.xlabel('Clients')
             plt.ylabel('Clients')
+
+            plt.title('Counterfactuals Distances Space')
         else:
-            color = ['black']*(data[i].shape[0]-n_attackers) + ['red']*n_attackers
+            color = ['black']*(data[i].shape[0]-n_attackers-1) + ['red']*n_attackers
             for j, _ in enumerate(data[i]):
                 # plt.scatter(data[i][:, 0], data[i][:, 1], c=color)
+                if j == data[i].shape[0]-1:
+                    continue
                 plt.annotate(str(j), (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,10), ha='center', color=color[j])
             # plt.scatter(worst_errors[i][:, 0], worst_errors[i][:, 1], alpha=0.3)
             # show legend in all plots
@@ -2197,25 +2223,204 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=No
             plt.ylim(ylim)
             plt.xlabel('x1')
             plt.ylabel('x2')
+            plt.title('Behavioural Error')
         if name in ['matrix', 'cf_matrix']:
             i_tmp = (i + 1)*10
         else:
             i_tmp = i + 1
-        if i_tmp >= rounds:
-            plt.title('Iteration {} Personalisation'.format(i_tmp-rounds))
-        else:
-            plt.title('Iteration {}'.format(i_tmp))
-        plt.savefig(os.path.join(path, f'{name}/iteration_{i}.png'))
-        plt.close()
-    files = []
-    for file in os.listdir(os.path.join(path, f'{name}')):
-        file_n = file.split('_')[-1].split('.')[0]
-        files.append((file, int(file_n)))
-    files.sort(key=lambda x: x[1])
-    for file in files:
-        images.append(imageio.imread(os.path.join(path, f'{name}', file[0])))
-    imageio.mimsave(os.path.join(path, f'evolution_{name}_{attack_type}_{n_attackers}.gif'), images, duration=1)
 
+        plt.savefig(os.path.join(path, f'{name}/iteration_{i}.pdf'), bbox_inches='tight')
+        plt.close()
+
+
+def create_image_with_trajectories_absolute(data, path, name, n_attackers=0, rounds=1000, worst_errors=None, attack_type=None, title='', return_best=False):
+    if not os.path.exists(os.path.join(path, f'{name}')):
+        os.makedirs(os.path.join(path, f'{name}'))
+    else:
+        for file in os.listdir(os.path.join(path, f'{name}')):
+            os.remove(os.path.join(path, f'{name}', file))
+    images = []
+    # cmap = plt.get_cmap('Accent')
+    colors = ['blue', 'green', 'cyan', 'magenta', 'yellow', 'orange', 'purple', 'brown', 'lime', 'navy']
+    # colors = sns.color_palette("pastel", len(data_dict))
+    plt.close()
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams.update({'font.size': 30})
+    plt.rcParams["figure.figsize"] = (10,5)
+    return_best_int = int(return_best)
+    for i in tqdm(range(len(data))):
+        cmap = sns.color_palette("pastel", data[i].shape[0]-n_attackers)
+        color = ['black']*return_best_int + [colors[i] for i in range(data[i].shape[0]-n_attackers-1-return_best_int)] + ['red']*n_attackers + ['black'] 
+        max_x = -1000
+        max_y = -1000
+        min_x = 1000
+        min_y = 1000
+        for j, _ in enumerate(data[i]):
+            # plt.scatter(data[i][:, 0], data[i][:, 1], c=color)
+            if j == 0 and return_best:
+                plt.annotate('B', (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,0), ha='center', color=color[j])
+            if j == data[i].shape[0]-1:
+                plt.annotate('S', (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,0), ha='center', color=color[j])
+            else:
+                if return_best:
+                    plt.annotate(str(j), (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,0), ha='center', color=color[j])
+                else:
+                    plt.annotate(str(j+1), (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,0), ha='center', color=color[j])
+            
+            # get at max last 10 points in data[i]
+            n_old = min(i, 15)
+            old_points = np.array([el[j] for f, el in enumerate(data) if f <= i and f >= i-n_old])
+            max_x_tmp = np.max(old_points[:, 0])
+            if max_x_tmp > 0:
+                max_x_tmp = max_x_tmp * 1.2
+            else:
+                max_x_tmp = max_x_tmp * 0.8
+            max_y_tmp = np.max(old_points[:, 1])
+            if max_y_tmp > 0:
+                max_y_tmp = max_y_tmp * 1.2
+            else:
+                max_y_tmp = max_y_tmp * 0.8
+            min_x_tmp = np.min(old_points[:, 0])
+            if min_x_tmp < 0:
+                min_x_tmp = min_x_tmp * 1.2
+            else:
+                min_x_tmp = min_x_tmp * 0.8
+            min_y_tmp = np.min(old_points[:, 1])
+            if min_y_tmp < 0:
+                min_y_tmp = min_y_tmp * 1.2
+            else:
+                min_y_tmp = min_y_tmp * 0.8
+            max_x = max(max_x, max_x_tmp)
+            max_y = max(max_y, max_y_tmp)
+            min_x = min(min_x, min_x_tmp)
+            min_y = min(min_y, min_y_tmp)
+            # old_points = data[i-n_old:i+1][j]
+            dx = np.diff(old_points[:, 0])
+            dy = np.diff(old_points[:, 1])
+            if len(dx) > 0:
+                for k in range(len(dx)):
+                    plt.quiver(old_points[k, 0], old_points[k, 1], dx[k], dy[k], angles='xy', scale_units='xy', scale=1, color=color[j], alpha=1/(len(dx)-k))
+        # plt.scatter(worst_errors[i][:, 0], worst_errors[i][:, 1], alpha=0.3)
+        # show legend in all plots
+        # min_x = min(-0.1, -2)
+        # max_x = max(0.1, 2)
+        # min_y = min(-0.1, -2)
+        # max_y = max(0.1, 2)
+        xlim = (min_x, max_x)
+        ylim = (min_y, max_y)
+        plt.xlim(xlim)
+        plt.ylim(ylim)
+        plt.xlabel('1st principal component')
+        plt.ylabel('2nd principal component')
+        i_tmp = i + 1   
+        plt.title(title)
+        print('Saving image to:')
+        print(os.path.join(path, f'{name}/iteration_{i_tmp}.png'))
+        plt.savefig(os.path.join(path, f'{name}/iteration_{i_tmp}.pdf'), bbox_inches='tight')
+        plt.close()
+
+def create_image_with_trajectories_relative(data, path, name, n_attackers=0, rounds=1000, worst_errors=None, attack_type=None, title=''):
+    if not os.path.exists(os.path.join(path, f'{name}')):
+        os.makedirs(os.path.join(path, f'{name}'))
+    else:
+        for file in os.listdir(os.path.join(path, f'{name}')):
+            os.remove(os.path.join(path, f'{name}', file))
+    images = []
+    # cmap = plt.get_cmap('Accent')
+    colors = ['blue', 'green', 'cyan', 'magenta', 'yellow', 'orange', 'purple', 'brown', 'lime', 'navy']
+    # colors = sns.color_palette("pastel", len(data_dict))
+    plt.close()
+    plt.rcParams['text.usetex'] = True
+    plt.rcParams.update({'font.size': 30})
+    plt.rcParams["figure.figsize"] = (10,5)
+    for i in tqdm(range(len(data))):
+        cmap = sns.color_palette("pastel", data[i].shape[0]-n_attackers)
+        color = [colors[i] for i in range(data[i].shape[0]-n_attackers-1)] + ['red']*n_attackers + ['black'] 
+        max_x = -1000
+        max_y = -1000
+        min_x = 1000
+        min_y = 1000
+        for j, _ in enumerate(data[i]):
+            # plt.scatter(data[i][:, 0], data[i][:, 1], c=color)
+            if j == data[i].shape[0]-1:
+                plt.annotate('S', (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,0), ha='center', color=color[j])
+                n_old = min(i, 15)
+                old_points = np.array([el[j] for f, el in enumerate(data) if f <= i and f >= i-n_old])
+                max_x_tmp = np.max(old_points[:, 0])
+                if max_x_tmp > 0:
+                    max_x_tmp = max_x_tmp * 1.1
+                else:
+                    max_x_tmp = max_x_tmp * 0.9
+                max_y_tmp = np.max(old_points[:, 1])
+                if max_y_tmp > 0:
+                    max_y_tmp = max_y_tmp * 1.1
+                else:
+                    max_y_tmp = max_y_tmp * 0.9
+                min_x_tmp = np.min(old_points[:, 0])
+                if min_x_tmp < 0:
+                    min_x_tmp = min_x_tmp * 1.1
+                else:
+                    min_x_tmp = min_x_tmp * 0.9
+                min_y_tmp = np.min(old_points[:, 1])
+                if min_y_tmp < 0:
+                    min_y_tmp = min_y_tmp * 1.1
+                else:
+                    min_y_tmp = min_y_tmp * 0.9
+                max_x = max(max_x, max_x_tmp)
+                max_y = max(max_y, max_y_tmp)
+                min_x = min(min_x, min_x_tmp)
+                min_y = min(min_y, min_y_tmp)
+                # old_points = data[i-n_old:i+1][j]
+                dx = np.diff(old_points[:, 0])
+                dy = np.diff(old_points[:, 1])
+                if len(dx) > 0:
+                    for k in range(len(dx)):
+                        plt.quiver(old_points[k, 0], old_points[k, 1], dx[k], dy[k], angles='xy', scale_units='xy', scale=1, color=color[j], alpha=1/(len(dx)-k))
+            else:
+                plt.annotate(str(j+1), (data[i][j, 0], data[i][j, 1]), textcoords="offset points", xytext=(0,0), ha='center', color=color[j])
+                old_points = np.array([data[i][-1], data[i][j]])
+                max_x_tmp = np.max(old_points[:, 0])
+                if max_x_tmp > 0:
+                    max_x_tmp = max_x_tmp * 1.1
+                else:
+                    max_x_tmp = max_x_tmp * 0.9
+                max_y_tmp = np.max(old_points[:, 1])
+                if max_y_tmp > 0:
+                    max_y_tmp = max_y_tmp * 1.1
+                else:
+                    max_y_tmp = max_y_tmp * 0.9
+                min_x_tmp = np.min(old_points[:, 0])
+                if min_x_tmp < 0:
+                    min_x_tmp = min_x_tmp * 1.1
+                else:
+                    min_x_tmp = min_x_tmp * 0.9
+                min_y_tmp = np.min(old_points[:, 1])
+                if min_y_tmp < 0:
+                    min_y_tmp = min_y_tmp * 1.1
+                else:
+                    min_y_tmp = min_y_tmp * 0.9
+                max_x = max(max_x, max_x_tmp)
+                max_y = max(max_y, max_y_tmp)
+                min_x = min(min_x, min_x_tmp)
+                min_y = min(min_y, min_y_tmp)
+                # old_points = data[i-n_old:i+1][j]
+                dx = np.diff(old_points[:, 0])
+                dy = np.diff(old_points[:, 1])
+                if len(dx) > 0:
+                    plt.quiver(data[i][-1, 0], data[i][-1, 1], dx[0], dy[0], angles='xy', scale_units='xy', scale=1, color=color[j])
+
+        xlim = (min_x, max_x)
+        ylim = (min_y, max_y)
+        plt.xlim(xlim)
+        plt.ylim(ylim)
+        plt.xlabel('1st principal component')
+        plt.ylabel('2nd principal component')
+        i_tmp = i + 1   
+        plt.title(title)
+        print('Saving image to:')
+        print(os.path.join(path, f'{name}/iteration_{i_tmp}.png'))
+        plt.savefig(os.path.join(path, f'{name}/iteration_{i_tmp}.pdf'), bbox_inches='tight')
+        plt.close()
 
 def create_gif(args, config):
     data_type=args.data_type
@@ -2224,9 +2429,10 @@ def create_gif(args, config):
     fold = args.fold
     model = config["model_name"]
     dataset = config["dataset"]
+    attack = args.attack_type
     # create folder
-    if not os.path.exists(f'images/{dataset}/{model}/gifs/{data_type}/{fold}'):
-        os.makedirs(f'images/{dataset}/{model}/gifs/{data_type}/{fold}')
+    if not os.path.exists(f'images/{dataset}/{model}/gifs/{data_type}/{attack}/{fold}'):
+        os.makedirs(f'images/{dataset}/{model}/gifs/{data_type}/{attack}/{fold}')
     data_changes = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'common_changes')
     data_errors = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'errors')
     worst_points = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'worst_points')
@@ -2234,13 +2440,52 @@ def create_gif(args, config):
     cf_matrix = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'cf_matrix')
     counterfactual = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'counterfactuals')
 
-    create_gif_aux(data_errors, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'error', n_attackers, rounds, attack_type=args.attack_type)
-    create_gif_aux(data_matrix, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'matrix', n_attackers, rounds, attack_type=args.attack_type)
+    # pca on cf_matrix
+    pca = TSNE(n_components=2)
+    # transform cf_matrix in np array 
+    # cf_matrix_np = np.array(cf_matrix)
+    # stack the array in cf_matrix on axes 0
+    cf_matrix_np = np.concatenate(cf_matrix, axis=0)
+    # cf_matrix_pca = cf_matrix_np.reshape((cf_matrix_np.shape[0]*cf_matrix_np.shape[1], cf_matrix_np.shape[2]))
+    cf_matrix_pca = pca.fit_transform(cf_matrix_np)
+    cf_matrix_pca = [cf_matrix_pca[i*cf_matrix[0].shape[0]:(i+1)*cf_matrix[0].shape[0]] for i in range(len(cf_matrix))]
+    # cf_matrix_pca = cf_matrix_pca.reshape((cf_matrix_np.shape[0], cf_matrix_np.shape[1], cf_matrix_pca.shape[1]))
+    # cf_matrix_pca = [pca.transform(el) for el in cf_matrix]
+    # create_gif_aux(data_errors, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'error', n_attackers, rounds, attack_type=args.attack_type)
+    # create_gif_aux(data_matrix, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'matrix', n_attackers, rounds, attack_type=args.attack_type)
     create_gif_aux(cf_matrix, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'cf_matrix', n_attackers, rounds, attack_type=args.attack_type)
-    create_gif_aux(data_changes, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'changes', n_attackers, rounds, attack_type=args.attack_type)
-    create_gif_aux(counterfactual, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'counter', n_attackers, rounds, attack_type=args.attack_type)
-    
+    # create_gif_aux(data_changes, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'changes', n_attackers, rounds, attack_type=args.attack_type)
+    # create_gif_aux(counterfactual, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'counter', n_attackers, rounds, attack_type=args.attack_type)
+    create_image_with_trajectories_absolute(data_errors, f'images/{dataset}/{model}/gifs/{data_type}/{attack}/{fold}', 'error_traj', n_attackers, rounds, attack_type=args.attack_type, title='Error Behaviour', return_best=False)
+    create_image_with_trajectories_relative(data_errors, f'images/{dataset}/{model}/gifs/{data_type}/{attack}/{fold}', 'relative_error_traj', n_attackers, rounds, attack_type=args.attack_type, title='Error Behaviour')
+    create_image_with_trajectories_absolute(cf_matrix_pca, f'images/{dataset}/{model}/gifs/{data_type}/{attack}/{fold}', 'cf_traj', n_attackers, rounds, attack_type=args.attack_type, title='Counterfactual Behaviour')
+    create_image_with_trajectories_relative(cf_matrix_pca, f'images/{dataset}/{model}/gifs/{data_type}/{attack}/{fold}', 'relative_cf_traj', n_attackers, rounds, attack_type=args.attack_type, title='Counterfactual Behaviour')
 
+# def create_gif(args, config):
+#     data_type=args.data_type
+#     n_attackers=args.n_attackers
+#     rounds = args.rounds
+#     fold = args.fold
+#     model = config["model_name"]
+#     dataset = config["dataset"]
+#     # create folder
+#     if not os.path.exists(f'images/{dataset}/{model}/gifs/{data_type}/{fold}'):
+#         os.makedirs(f'images/{dataset}/{model}/gifs/{data_type}/{fold}')
+#     data_changes = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'common_changes')
+#     data_errors = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'errors')
+#     worst_points = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'worst_points')
+#     data_matrix = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'dist_matrix')
+#     print(f"len data matrix: {len(data_matrix)}")
+#     print(f"path: results/{model}/{dataset}/{data_type}/{fold}")
+#     cf_matrix = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'cf_matrix')
+#     counterfactual = load_files(f'results/{model}/{dataset}/{data_type}/{fold}', 'counterfactuals')
+
+#     create_gif_aux(data_errors, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'error', n_attackers, rounds, attack_type=args.attack_type)
+#     create_gif_aux(data_matrix, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'matrix', n_attackers, rounds, attack_type=args.attack_type)
+#     create_gif_aux(cf_matrix, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'cf_matrix', n_attackers, rounds, attack_type=args.attack_type)
+#     create_gif_aux(data_changes, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'changes', n_attackers, rounds, attack_type=args.attack_type)
+#     create_gif_aux(counterfactual, f'images/{dataset}/{model}/gifs/{data_type}/{fold}', 'counter', n_attackers, rounds, attack_type=args.attack_type)
+    
 
 def plot_cf(x, y, client_id, config, data_type, centralised=False, show=True, add_name=""):
     centralised = "centralized" if centralised else ""
@@ -2267,33 +2512,6 @@ def plot_cf(x, y, client_id, config, data_type, centralised=False, show=True, ad
     plt.title('Generated Counterfactuals')
     plt.savefig(folder + f"counterfactual{add_name}.png")
     plt.clf() 
-    # plt.scatter(x[:, 2], x[:, 1], c=y, cmap='viridis')
-    # # plt line to separate classes with the equation y = -0.72654253x
-    # # x_line = np.linspace(-5, 5, 100)
-    # # y_line = -0.72654253 * x_line
-    # # plt.plot(x_line, y_line, color='red')
-    # plt.xlabel('x3')
-    # plt.ylabel('x2')
-    # plt.xlim(-7, 7)
-    # plt.ylim(-5, 5)
-    # plt.title('Generated Counterfactuals')
-    # plt.savefig(folder + f"counterfactual{add_name}_2D_12.png")
-    # plt.clf() 
-    # fig = plt.figure(figsize=plt.figaspect(1))
-    # ax = fig.add_subplot(1, 1, 1, projection='3d')
-    # ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=y, cmap='viridis')
-    # # plt line to separate classes with the equation y = -0.72654253x
-    # # x_line = np.linspace(-5, 5, 100)
-    # # y_line = -0.72654253 * x_line
-    # # plt.plot(x_line, y_line, color='red')
-    # ax.set_xlabel('x1')
-    # ax.set_ylabel('x2')
-    # ax.set_zlabel('x3')
-    # ax.set_xlim(-7, 7)
-    # ax.set_ylim(-5, 5)
-    # ax.set_zlim(-7, 7)
-    # ax.set_title('Generated Counterfactuals')
-    # plt.savefig(folder + f"counterfactual{add_name}_3D.png")
     if show:
         plt.show()
 
@@ -3078,6 +3296,526 @@ config_tests = {
                             3.0620797e+00,  7.1258111e+00,  2.6503911e+00,  2.7137415e+00,
                             3.0604863e+00,  1.2790121e+00,  3.9497492e+00,  1.8633019e+00,
                             1.9007893e+00,  2.6352310e+00,  2.1227047e+00,  5.4135137e+00],
+                        dtype=np.float32),
+    }, 
+    "cifar10": {
+        "net": {
+            "model_name": "net",
+            "dataset": "cifar10",
+            "checkpoint_folder": "checkpoints/cifar10/net/",
+            "history_folder": "histories/cifar10/net/",
+            "image_folder": "images/cifar10/net/",
+            "input_dim": 1000,
+            "output_dim": 10,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0]*1000), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0]*1000).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0]*1000),
+            "lambda1": 3,
+            "lambda2": 12,
+            "lambda3": 1,
+            "lambda4": 1.5,
+            "lambda5": 0.000001,
+            "learning_rate": 0.01,
+            "learning_rate_personalization": 0.01,
+            "n_epochs_personalization": 25,
+            "decoder_w": ["decoder"],
+            "encoder1_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "encoder2_w": ["concept_mean_z3_predictor", "concept_var_z3_predictor"],
+            "encoder3_w": ["concept_mean_qz3_predictor", "concept_var_qz3_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "output_round": False,
+        },
+        "vcnet": {
+            "model_name": "vcnet",
+            "dataset": "cifar10",
+            "checkpoint_folder": "checkpoints/cifar10/vcnet/",
+            "history_folder": "histories/cifar10/vcnet/",
+            "image_folder": "images/cifar10/vcnet/",
+            "input_dim": 1000,
+            "output_dim": 10,
+            "drop_prob": 0.3,
+            "mask": torch.nn.Parameter(torch.Tensor([0]*1000), requires_grad=False),
+            "binary_feature": torch.nn.Parameter(torch.Tensor([0]*1000).bool(), requires_grad=False),
+            "mask_evaluation": torch.Tensor([0]*1000),
+            "lambda1": 2,
+            "lambda2": 10,
+            "learning_rate": 0.01,
+            "learning_rate_personalization": 0.01,
+            "n_epochs_personalization": 25,
+            "decoder_w": ["decoder"],
+            "encoder_w": ["concept_mean_predictor", "concept_var_predictor"],
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "output_round": False,
+        },
+        "predictor": {
+            "model_name": "predictor",
+            "dataset": "cifar10",
+            "checkpoint_folder": "checkpoints/cifar10/predictor/",
+            "history_folder": "histories/cifar10/predictor/",
+            "image_folder": "images/cifar10/predictor/",
+            "input_dim": 1000,
+            "output_dim": 10,
+            "learning_rate": 0.01,
+            "learning_rate_personalization": 0.01,
+            "n_epochs_personalization": 25,
+            "classifier_w": ["fc1", "fc2", "fc3", "fc4", "fc5"],
+            "to_freeze": ["fc1", "fc2", "fc3"],
+            "output_round": False,
+        },
+        "min" : np.array([ -4.5871487 ,  -4.6358075 ,  -7.418623  ,  -9.990989  ,
+                        -8.939179  ,  -5.761195  , -10.811308  ,  -7.9509463 ,
+                        -7.258865  ,  -7.5943346 ,  -3.9330566 ,  -8.673912  ,
+                        -8.530125  ,  -9.762794  ,  -9.437569  ,  -8.586083  ,
+                        -8.554037  ,  -8.17633   , -10.226631  ,  -7.6861315 ,
+                        -9.085112  ,  -5.9198956 ,  -9.428663  ,  -6.6764646 ,
+                        -7.729924  ,  -7.097042  ,  -5.7323446 ,  -5.523375  ,
+                        -5.527059  ,  -6.466392  ,  -8.163427  ,  -8.225595  ,
+                        -5.1834345 ,  -8.309029  ,  -5.98918   ,  -6.725506  ,
+                        -4.399826  ,  -8.187369  ,  -5.093586  ,  -7.6656437 ,
+                        -7.6449513 ,  -6.919078  ,  -5.547658  ,  -2.6619322 ,
+                        -7.135477  ,  -6.2847285 ,  -8.580095  ,  -5.460816  ,
+                        -8.918801  ,  -8.183711  ,  -8.69157   ,  -2.7681775 ,
+                        -6.072695  ,  -7.3156705 ,  -8.218053  ,  -8.718282  ,
+                        -7.9509726 ,  -7.936111  ,  -7.7279367 ,  -4.4083548 ,
+                        -4.6838264 ,  -7.5007687 ,  -2.7141452 ,  -4.3137774 ,
+                        -5.5655885 ,  -5.9817595 ,  -5.2027345 ,  -7.9114356 ,
+                        -3.2955165 ,  -8.7436    ,  -7.892472  ,  -7.880014  ,
+                        -7.1566453 ,  -2.5265133 ,  -8.115016  ,  -9.899534  ,
+                        -6.547711  ,  -9.73546   ,  -3.9947493 ,  -7.8778844 ,
+                        -4.3774614 ,  -9.289634  ,  -6.481336  ,  -4.389234  ,
+                        -10.606377  ,  -8.3670435 ,  -5.4772005 ,  -6.924793  ,
+                        -7.1145015 ,  -9.136739  ,  -8.462389  ,  -7.5489364 ,
+                        -9.328876  ,  -8.22864   ,  -7.363138  ,  -5.1670527 ,
+                        -8.61504   ,  -8.377821  ,  -4.230157  ,  -6.366493  ,
+                        -9.508189  ,  -5.2506948 ,  -6.1546755 ,  -4.318921  ,
+                        -6.4599614 ,  -5.692819  ,  -6.715106  ,  -9.235675  ,
+                        -6.9583516 ,  -6.649343  ,  -9.716839  ,  -4.9050713 ,
+                        -7.9314795 ,  -5.370784  ,  -6.427232  ,  -7.6299596 ,
+                        -5.5806665 ,  -3.5956283 ,  -5.6930013 ,  -7.5385604 ,
+                        -6.1295643 ,  -6.4674745 ,  -7.014464  ,  -6.7419252 ,
+                        -6.595353  ,  -7.6984987 ,  -4.0545826 ,  -9.626272  ,
+                        -4.8013535 ,  -7.861985  , -10.259156  ,  -9.454387  ,
+                        -9.102127  ,  -9.199015  ,  -7.7939568 ,  -4.5305204 ,
+                        -8.540945  ,  -7.4333515 , -11.886337  ,  -8.1702795 ,
+                        -7.8712173 , -10.009203  ,  -7.6783085 ,  -9.060495  ,
+                        -7.870367  ,  -5.618572  ,  -7.7700763 ,  -5.1475253 ,
+                        -6.0666685 ,  -3.8431294 ,  -3.9099836 ,  -4.580211  ,
+                        -2.3091557 ,  -6.6714387 ,  -4.445132  ,  -5.4207106 ,
+                        -5.336225  ,  -6.073296  ,  -2.648747  ,  -4.1626835 ,
+                        -3.289551  ,  -5.591049  ,  -7.5857525 ,  -4.5412917 ,
+                        -3.6178823 ,  -1.7658272 ,  -1.6708213 ,  -1.849347  ,
+                        -1.8940982 ,  -5.5764027 ,  -6.6243734 ,  -6.027306  ,
+                        -5.2529836 ,  -4.3069882 ,  -5.4685793 ,  -2.0381937 ,
+                        -6.124424  ,  -3.7288127 ,  -6.0343924 ,  -4.9947567 ,
+                        -5.2524924 ,  -2.822882  ,  -5.1665387 ,  -2.2685444 ,
+                        -6.159279  ,  -5.3092194 ,  -4.5959754 ,  -3.7069447 ,
+                        -2.176616  ,  -4.499972  ,  -2.389632  ,  -5.2096896 ,
+                        -5.82937   ,  -4.735204  ,  -2.4597015 ,  -5.952279  ,
+                        -6.293795  ,  -6.667272  ,  -6.1079235 ,  -6.2535353 ,
+                        -3.4988468 ,  -6.305428  ,  -5.3210373 ,  -7.6767535 ,
+                        -7.4606133 ,  -6.00554   ,  -4.138862  ,  -3.57703   ,
+                        -3.3375664 ,  -4.820213  ,  -3.3080719 ,  -4.927055  ,
+                        -5.384543  ,  -6.2541184 ,  -5.1544404 ,  -5.7095437 ,
+                        -4.987622  ,  -7.7167025 ,  -7.984518  ,  -6.6653132 ,
+                        -2.2917283 ,  -2.7880468 ,  -5.5659556 ,  -6.184416  ,
+                        -5.5608416 ,  -7.520977  ,  -5.0914187 ,  -3.813987  ,
+                        -2.54766   ,  -6.395084  ,  -6.744231  ,  -5.878323  ,
+                        -4.2123165 ,  -6.1400743 ,  -5.481597  ,  -5.49494   ,
+                        -3.6456323 ,  -5.4422674 ,  -4.864816  ,  -6.5926123 ,
+                        -4.763443  ,  -2.3253975 ,  -6.0489554 ,  -4.8927426 ,
+                        -4.978703  ,  -5.3623743 ,  -4.7352386 ,  -4.76494   ,
+                        -3.6151183 ,  -5.1322274 ,  -3.7122884 ,  -5.919797  ,
+                        -2.0032814 ,  -4.037391  ,  -6.3310304 ,  -8.338318  ,
+                        -4.4357815 ,  -6.175721  ,  -7.2960696 ,  -5.176837  ,
+                        -7.0681963 ,  -4.7820177 ,  -3.2149363 ,  -5.1657953 ,
+                        -4.2751055 ,  -4.6544304 ,  -4.5031986 ,  -3.5382733 ,
+                        -3.799127  ,  -4.5021815 ,  -5.675348  ,  -5.197968  ,
+                        -3.8776643 ,  -3.361005  ,  -5.1999216 ,  -5.289716  ,
+                        -5.811971  ,  -4.1012526 ,  -3.4119089 ,  -5.3878307 ,
+                        -4.167885  ,  -2.9552565 ,  -3.0864391 ,  -2.935998  ,
+                        -4.795531  ,  -3.5639513 ,  -5.6420584 ,  -5.6393223 ,
+                        -3.8739111 ,  -6.640545  ,  -5.5618052 ,  -6.4293275 ,
+                        -4.769092  ,  -5.172883  ,  -6.42512   ,  -6.508421  ,
+                        -5.537621  ,  -5.660357  ,  -4.7272673 ,  -3.6016762 ,
+                        -8.378712  ,  -7.5511355 ,  -5.535307  ,  -6.4191523 ,
+                        -7.7776074 , -10.549071  ,  -7.0250006 ,  -6.430989  ,
+                        -10.414088  ,  -7.2894444 ,  -3.896305  ,  -7.4117694 ,
+                        -8.702475  ,  -7.838867  ,  -6.280092  ,  -9.35688   ,
+                        -7.300056  ,  -8.54538   ,  -6.9367614 ,  -7.94861   ,
+                        -8.709037  ,  -9.419231  ,  -7.857583  ,  -7.3164415 ,
+                        -7.8824167 ,  -9.032467  ,  -6.232038  ,  -6.23905   ,
+                        -7.946961  ,  -8.256033  ,  -3.9171343 ,  -4.70807   ,
+                        -4.6394215 ,  -8.508917  ,  -6.745717  ,  -2.095488  ,
+                        -6.461041  ,  -5.227989  ,  -5.7621455 ,  -4.0880885 ,
+                        -7.190383  ,  -3.3699722 ,  -5.051259  ,  -8.613324  ,
+                        -8.485805  ,  -3.8926864 ,  -7.787425  ,  -7.2768006 ,
+                        -9.056122  ,  -7.3945374 ,  -6.8528438 ,  -5.5696206 ,
+                        -8.20465   ,  -4.893741  ,  -6.3628006 ,  -6.066039  ,
+                        -3.7006342 ,  -4.484067  ,  -2.3379374 ,  -2.547569  ,
+                        -3.5636954 ,  -4.738309  ,  -5.5710874 ,  -6.0146737 ,
+                        -4.6035933 ,  -4.475265  ,  -6.5766983 ,  -5.6520796 ,
+                        -3.9089155 ,  -4.264186  ,  -3.813039  ,  -2.9934907 ,
+                        -5.743334  ,  -2.959861  ,  -3.2403667 ,  -5.470142  ,
+                        -5.6385465 ,  -2.7859917 ,  -4.478351  ,  -4.8522553 ,
+                        -4.684163  ,  -4.8734546 ,  -4.1888766 ,  -4.5207176 ,
+                        -3.6672132 ,  -4.3447666 ,  -5.304689  ,  -4.787874  ,
+                        -5.879706  ,  -4.91042   ,  -5.0456967 ,  -6.4065137 ,
+                        -3.7770078 ,  -9.120024  ,  -6.292048  ,  -6.290312  ,
+                        -8.858644  ,  -8.297023  ,  -7.7178106 ,  -2.9231    ,
+                        -3.8021882 ,  -6.8621597 ,  -6.4106164 ,  -9.20259   ,
+                        -7.931948  ,  -5.4066844 ,  -7.569124  ,  -6.3517017 ,
+                        -5.0988684 ,  -3.1227348 ,  -7.0858526 ,  -6.3141866 ,
+                        -5.227764  ,  -3.4111457 ,  -7.8067145 ,  -8.727974  ,
+                        -4.6167564 ,  -7.2426605 ,  -4.211301  ,  -3.29059   ,
+                        -4.9915385 ,  -3.1560538 ,  -8.534865  ,  -5.248103  ,
+                        -6.617386  ,  -7.4855967 ,  -3.2899606 ,  -1.611385  ,
+                        -5.001993  ,  -4.343618  ,  -6.11068   ,  -6.55717   ,
+                        -3.3496764 ,  -5.1622987 ,  -6.045846  ,  -5.951328  ,
+                        -7.3162436 ,  -7.855556  ,  -4.083398  ,  -3.1797068 ,
+                        -5.946842  ,  -6.551908  ,  -6.4973106 ,  -7.3885045 ,
+                        -6.066843  ,  -5.8454256 ,  -4.0907536 ,  -4.491249  ,
+                        -7.5287347 ,  -6.0963655 ,  -6.2831397 ,  -2.7732933 ,
+                        -7.205778  ,  -6.2348924 ,  -7.736712  ,  -6.8912706 ,
+                        -4.4521866 ,  -6.2810264 ,  -7.445846  ,  -6.1235833 ,
+                        -8.16041   ,  -3.3043158 ,  -4.0242095 ,  -3.379214  ,
+                        -6.363458  ,  -1.151448  ,  -6.6266685 ,  -9.198493  ,
+                        -7.150291  ,  -5.0409784 ,  -6.310492  ,  -6.877684  ,
+                        -6.5741224 ,  -2.2368698 ,  -5.1490073 ,  -7.0633106 ,
+                        -7.039888  ,  -4.203509  ,  -6.0006747 ,  -6.414356  ,
+                        -6.447128  ,  -4.0411096 ,  -3.5935602 ,  -6.493251  ,
+                        -7.4150996 ,  -8.050459  ,  -5.2952952 ,  -5.907052  ,
+                        -2.1580007 ,  -5.6309257 ,  -2.835412  ,  -3.4617481 ,
+                        -6.958748  ,  -2.634791  ,  -2.6136415 ,  -6.6585617 ,
+                        -7.7294064 ,  -8.698725  ,  -9.192896  ,  -3.4179611 ,
+                        -8.152439  ,  -2.9759958 ,  -1.9015968 ,  -2.5044074 ,
+                        -5.802683  ,  -5.2742753 ,  -6.562123  ,  -2.8583987 ,
+                        -6.039399  ,  -7.9289427 ,  -4.7576194 ,  -6.9794564 ,
+                        -4.6427784 ,  -4.2484884 ,  -3.2457304 ,  -4.335965  ,
+                        -3.1550608 ,  -6.9837294 ,  -5.546437  ,  -3.6757934 ,
+                        -8.332223  ,  -3.7272666 ,  -2.5990825 ,  -5.5942984 ,
+                        -3.5846856 ,  -8.427177  ,  -7.3000097 ,  -4.60795   ,
+                        -7.1841493 ,  -5.917951  ,  -4.562937  ,  -3.5090337 ,
+                        -5.6301928 ,  -7.1558113 ,  -3.8093576 ,  -8.119239  ,
+                        -6.828387  ,  -5.906928  ,  -5.374042  ,  -4.5902286 ,
+                        -6.6540594 ,  -3.633304  ,  -5.0835037 ,  -7.1073694 ,
+                        -8.489215  ,  -6.5958123 ,  -7.099483  ,  -7.264697  ,
+                        -4.762319  ,  -6.4034348 ,  -3.609922  ,  -5.7717533 ,
+                        -7.0203433 ,  -4.9609404 ,  -7.7448525 ,  -7.398838  ,
+                        -2.2515047 ,  -7.3906064 ,  -4.0877137 ,  -4.2059364 ,
+                        -5.5817204 ,  -7.2555904 ,  -6.615376  ,  -7.7172403 ,
+                        -7.6028943 ,  -7.2249017 ,  -5.573432  ,  -2.7057955 ,
+                        -7.1708446 ,  -8.029957  ,  -4.5617385 ,  -9.41802   ,
+                        -7.167426  ,  -7.4215856 ,  -5.1651993 ,  -7.1748395 ,
+                        -6.051962  ,  -1.8039964 ,  -8.473515  ,  -6.9861417 ,
+                        -8.7672825 ,  -9.271336  ,  -6.485185  ,  -2.4567137 ,
+                        -5.0809846 ,  -3.3892105 ,  -6.5350504 ,  -5.8169518 ,
+                        -4.114046  ,  -4.647753  ,  -2.174415  ,  -6.090141  ,
+                        -9.049193  ,  -3.1495137 ,  -5.537377  ,  -8.706344  ,
+                        -1.5660101 ,  -6.8922353 ,  -6.4699297 ,  -5.8086333 ,
+                        -4.0418887 ,  -3.2688437 ,  -4.3514466 ,  -7.666336  ,
+                        -2.4352326 ,  -9.0381155 ,  -4.840026  ,  -6.855343  ,
+                        -7.5180154 ,  -8.548712  ,  -2.5104144 ,  -5.849713  ,
+                        -5.6526446 ,  -5.338429  ,  -7.4176292 ,  -2.9017465 ,
+                        -5.1751547 ,  -4.210796  ,  -6.379109  ,  -4.7471404 ,
+                        -4.90394   ,  -5.574713  ,  -7.3825274 ,  -2.009382  ,
+                        -6.3496184 ,  -8.757741  ,  -7.2187657 ,  -6.767556  ,
+                        -8.404849  ,  -5.981968  ,  -3.2591398 ,  -2.156218  ,
+                        -5.4500556 ,  -1.430391  ,  -7.19737   ,  -1.6739235 ,
+                        -4.4414773 ,  -6.425978  ,  -6.105423  ,  -4.031017  ,
+                        -8.921078  ,  -2.2359712 ,  -6.8225    ,  -7.094201  ,
+                        -4.9513197 ,  -6.159183  ,  -3.9945498 ,  -4.505989  ,
+                        -6.582391  ,  -6.9046597 ,  -7.1664267 ,  -5.2623873 ,
+                        -6.3424644 ,  -0.85965866,  -5.197891  ,  -6.781667  ,
+                        -5.351362  ,  -9.02166   ,  -5.5445194 ,  -6.3957853 ,
+                        -5.039205  ,  -9.208715  ,  -4.2833996 ,  -3.337924  ,
+                        -5.8967633 ,  -4.908917  ,  -3.9718094 ,  -5.5149546 ,
+                        -6.9451413 ,  -7.033018  ,  -6.579359  ,  -7.150753  ,
+                        -4.1373434 ,  -7.332328  ,  -4.2510676 ,  -3.2274673 ,
+                        -1.1198447 ,  -3.8545763 ,  -1.473254  ,  -9.687881  ,
+                        -1.7592435 ,  -7.746979  ,  -8.722896  ,  -1.8624803 ,
+                        -1.2209697 ,  -8.18716   ,  -3.670249  ,  -7.46869   ,
+                        -6.2330256 ,  -3.4881322 ,  -6.2705545 ,  -5.07276   ,
+                        -5.193511  ,  -3.9706964 ,  -7.446674  ,  -3.886602  ,
+                        -5.920791  ,  -7.6689897 ,  -7.771292  ,  -1.7336255 ,
+                        -4.4171777 ,  -5.702063  ,  -4.622695  ,  -6.3814616 ,
+                        -7.775177  ,  -4.7613206 ,  -7.0909777 ,  -7.26238   ,
+                        -3.0981188 ,  -9.34976   ,  -8.54941   ,  -7.2401314 ,
+                        -2.8853238 ,  -5.735097  ,  -3.3380177 ,  -3.8095703 ,
+                        -6.9258347 ,  -7.256468  ,  -5.75914   ,  -6.69574   ,
+                        -4.977507  ,  -9.479604  ,  -3.822008  ,  -6.3123016 ,
+                        -4.394908  ,  -6.711999  ,  -3.8104758 ,  -4.737462  ,
+                        -1.9809406 ,  -2.9800987 ,  -7.526225  ,  -1.6302294 ,
+                        -7.7757382 ,  -4.427831  ,  -7.633965  ,  -7.536174  ,
+                        -6.5280485 ,  -6.237099  ,  -5.5025096 ,  -3.559477  ,
+                        -3.5261757 ,  -3.6970854 ,  -5.6734695 ,  -3.237955  ,
+                        -5.433144  ,  -7.060128  ,  -5.2902718 ,  -2.9329383 ,
+                        -7.3982124 ,  -5.2889175 ,  -5.2629094 ,  -7.267956  ,
+                        -8.015011  ,  -4.81367   ,  -6.851044  ,  -7.4493694 ,
+                        -4.8212633 ,  -7.0404744 ,  -4.640238  ,  -5.273871  ,
+                        -8.1858635 ,  -6.31651   ,  -7.637532  ,  -2.4988217 ,
+                        -7.355566  ,  -5.359098  ,  -3.1276474 ,  -6.5668726 ,
+                        -5.898182  ,  -3.8853831 ,  -5.879982  ,  -4.3853064 ,
+                        -2.045222  ,  -7.4540877 ,  -5.3878937 ,  -6.5894685 ,
+                        -4.696002  ,  -6.0529704 ,  -7.652566  ,  -8.0084505 ,
+                        -7.057962  ,  -5.955717  ,  -2.1366012 ,  -4.4436817 ,
+                        -4.809532  ,  -7.007387  ,  -7.469127  ,  -4.635501  ,
+                        -8.617616  ,  -2.9661503 ,  -4.546254  ,  -7.0674725 ,
+                        -5.2534122 ,  -5.9448647 ,  -6.54448   ,  -5.371842  ,
+                        -4.1995387 ,  -4.017033  ,  -3.516057  ,  -6.5141215 ,
+                        -6.347172  ,  -6.585301  ,  -8.791313  ,  -7.4986024 ,
+                        -3.1889117 ,  -3.6725552 ,  -6.8139606 ,  -5.5726295 ,
+                        -4.838331  ,  -7.157788  ,  -3.2459567 ,  -3.6302617 ,
+                        -5.647583  ,  -1.8823435 ,  -5.9791775 ,  -7.3654046 ,
+                        -7.9201336 ,  -7.6594477 ,  -3.546316  ,  -8.426766  ,
+                        -10.324149  ,  -3.7089078 ,  -4.6733685 ,  -5.0550113 ,
+                        -5.4799075 ,  -5.7583623 ,  -4.9320006 ,  -5.7045383 ,
+                        -6.9234643 ,  -7.551403  ,  -3.936656  ,  -2.4838476 ,
+                        -8.536547  ,  -7.0780406 ,  -4.724075  ,  -7.6342564 ,
+                        -2.6920652 ,  -6.217686  ,  -1.7400721 ,  -7.923535  ,
+                        -7.317187  ,  -1.3107511 ,  -4.731958  ,  -7.0339355 ,
+                        -5.193549  ,  -5.485668  ,  -3.1420455 ,  -7.9998393 ,
+                        -6.7633142 ,  -7.1111646 ,  -6.6561046 ,  -3.888136  ,
+                        -4.203685  ,  -7.185053  ,  -4.3577566 ,  -5.2399487 ,
+                        -3.548447  ,  -4.4515686 ,  -7.3039265 ,  -6.2465963 ,
+                        -2.0902596 ,  -4.5470953 ,  -3.8108842 ,  -7.966393  ,
+                        -6.8916354 ,  -4.9708204 ,  -6.910178  ,  -5.686257  ,
+                        -7.5871663 ,  -3.2542713 ,  -5.5302234 ,  -6.933277  ,
+                        -3.7313142 ,  -7.5535483 ,  -7.9199786 ,  -4.1723986 ,
+                        -6.503832  ,  -6.400469  ,  -4.643619  ,  -6.841319  ,
+                        -4.4103208 ,  -4.6341524 ,  -6.646555  ,  -5.8092885 ,
+                        -5.9737253 ,  -2.8057883 ,  -7.74865   ,  -5.911481  ,
+                        -6.5619407 ,  -6.7042336 ,  -5.798105  ,  -3.6047165 ,
+                        -3.3162081 ,  -7.3726287 ,  -7.098334  ,  -8.34984   ,
+                        -6.101183  ,  -6.0636625 ,  -5.4699416 ,  -4.1101103 ,
+                        -7.832162  ,  -2.2967489 ,  -1.9511309 ,  -6.3176    ,
+                        -5.226498  ,  -5.072166  ,  -0.02548437,  -6.238344  ,
+                        -8.413232  ,  -6.914921  ,  -6.4470797 ,  -4.872952  ,
+                        -3.5776875 ,  -7.806354  ,  -4.628856  ,  -8.372528  ,
+                        -3.7520988 ,  -4.3844824 ,  -6.656022  ,  -5.867694  ,
+                        -7.9442263 ,  -1.9694347 ,  -8.771569  ,  -5.303655  ,
+                        -6.8178854 ,  -3.972964  ,  -4.850734  ,  -5.9897676 ,
+                        -9.553968  ,  -6.3683257 ,  -5.8932323 ,  -4.8822875 ,
+                        -6.27836   ,  -9.261151  ,  -7.420313  ,  -6.9309416 ,
+                        -4.676084  ,  -5.0153637 ,  -5.3120503 ,  -6.4643736 ,
+                        -2.5103836 ,  -8.475791  ,  -5.8853474 ,  -6.3658376 ,
+                        -6.2203403 ,  -4.9125705 ,  -4.072423  ,  -7.6955314 ,
+                        -5.2074456 ,  -4.3702965 ,  -7.341251  ,  -6.1651034 ,
+                        -5.2727222 ,  -6.6085715 ,  -5.8272877 ,  -7.2795067 ,
+                        -5.064921  ,  -7.7090015 ,  -7.673061  ,  -5.4143124 ,
+                        -6.49879   ,  -8.308881  ,  -5.440846  ,  -9.1561775 ,
+                        -6.5418963 ,  -7.64697   ,  -6.7206836 ,  -8.406937  ,
+                        -6.884778  ,  -3.2579956 ,  -4.9741917 ,  -5.409746  ,
+                        -5.889207  ,  -8.845694  ,  -5.685108  ,  -3.912185  ,
+                        -5.9724135 ,  -4.7064137 ,  -4.996862  ,  -4.7735124 ,
+                        -7.407844  ,  -4.6166077 ,  -7.079563  ,  -7.3813896 ,
+                        -7.465955  ,  -5.7187214 ,  -7.680001  ,  -3.6999485 ,
+                        -6.206456  ,  -7.417971  ,  -8.018984  ,  -8.496586  ,
+                        -8.364908  ,  -5.900229  ,  -5.821183  ,  -5.094515  ,
+                        -4.2291436 ,  -6.643824  ,  -3.8266332 ,  -7.275945  ],
+                            dtype=np.float32),
+        "max" : np.array([10.423042 , 12.600371 ,  8.072652 ,  9.027553 , 12.251503 ,
+                        9.412625 ,  4.374051 ,  8.022254 ,  8.820903 , 14.572547 ,
+                        18.415415 , 11.8148775, 10.213047 , 12.746513 , 10.198513 ,
+                        9.072144 , 14.926754 ,  9.434887 , 10.594098 , 10.808314 ,
+                        11.800672 , 15.662813 , 12.325638 , 10.182576 , 10.051552 ,
+                        10.429396 , 12.341191 , 10.919868 , 11.383953 ,  9.62078  ,
+                        12.641973 , 11.7588215, 18.605917 ,  8.232991 ,  8.178155 ,
+                        10.142697 ,  9.711519 ,  8.018498 , 11.993644 ,  7.7086954,
+                        10.10922  , 10.69895  , 10.827294 , 12.934413 ,  8.068943 ,
+                        6.800266 ,  8.450273 , 12.084829 ,  5.7050962,  8.13478  ,
+                        4.6484833, 12.340337 ,  8.344975 ,  7.455947 ,  7.0156026,
+                        9.782901 ,  6.773877 ,  7.98915  ,  5.2508674, 14.677648 ,
+                        9.556901 ,  9.972726 , 14.440763 , 10.136069 , 14.389955 ,
+                        8.17452  , 10.531808 ,  6.106569 , 11.706444 ,  6.6199045,
+                        7.1996427, 13.72882  ,  7.495158 , 15.475789 ,  7.8043923,
+                        8.015189 ,  7.221599 ,  6.8278465, 17.109064 ,  9.117718 ,
+                        16.91463  ,  8.873056 , 10.7706175, 11.824097 ,  9.356311 ,
+                        9.130881 , 12.17669  ,  7.7712345,  7.8754706,  7.653214 ,
+                        8.324069 , 11.9012375,  9.44431  ,  8.6236515, 11.779489 ,
+                        13.942161 ,  9.355167 ,  7.654384 , 18.142841 , 14.652006 ,
+                        9.403797 , 16.312561 ,  7.16964  , 13.946706 , 16.3572   ,
+                        8.765242 ,  9.172639 ,  5.640151 ,  4.5128074,  5.9117665,
+                        7.462715 , 12.33427  ,  4.899757 , 10.573688 , 10.485943 ,
+                        8.130171 , 10.659076 , 10.2069025,  6.4493723,  7.8483105,
+                        10.048124 ,  5.849475 ,  7.425576 ,  5.423279 ,  7.5695977,
+                        5.8062406, 13.502331 , 12.597286 , 16.680561 , 11.441736 ,
+                        10.276374 ,  9.071452 ,  8.40834  , 10.349765 , 13.548771 ,
+                        15.433218 , 12.238259 ,  9.4819975, 10.357548 ,  9.299655 ,
+                        9.8919115,  7.008736 , 12.56674  , 11.215012 , 10.182248 ,
+                        12.035544 , 12.359167 , 15.739383 , 12.830032 , 13.033827 ,
+                        11.281161 , 14.786806 , 21.604353 , 15.237174 , 19.796785 ,
+                        13.230903 , 20.774921 , 16.610964 , 19.320301 , 13.446769 ,
+                        12.6823225, 13.625623 , 15.808905 , 15.021238 , 17.727396 ,
+                        17.967262 , 20.220217 , 21.076975 , 15.720018 , 12.659912 ,
+                        12.211095 , 10.520379 , 11.871631 , 14.5541935, 14.035283 ,
+                        15.432955 , 11.744743 , 14.05703  ,  8.76277  ,  8.781368 ,
+                        10.523994 , 16.437313 , 12.568853 , 13.201035 , 11.769848 ,
+                        12.037534 , 11.6381   , 13.867146 , 15.478898 , 12.151068 ,
+                        13.665386 , 11.908258 ,  9.676747 , 12.204349 , 16.60849  ,
+                        8.935873 ,  9.476754 , 11.076591 , 11.113335 ,  8.706856 ,
+                        13.4322195,  8.850754 ,  9.743563 ,  9.565993 , 11.05031  ,
+                        13.2370825, 15.878464 , 15.9591675, 13.19106  , 10.846144 ,
+                        14.019334 , 11.70356  , 10.933071 , 14.377319 , 13.372836 ,
+                        15.462259 , 16.464153 ,  9.529345 , 13.319782 , 11.696896 ,
+                        14.5144205, 16.022778 , 11.727517 , 11.824114 , 11.997706 ,
+                        13.278777 , 12.9261465, 13.593019 , 13.262985 , 13.09814  ,
+                        12.147039 , 12.41028  , 11.601058 , 12.137214 , 17.644577 ,
+                        15.961523 , 13.747489 , 13.004815 , 13.812068 , 11.120778 ,
+                        14.925933 , 19.211996 , 13.58022  , 16.952475 , 13.260672 ,
+                        10.732033 , 11.967375 , 17.942839 , 13.150628 , 11.464619 ,
+                        11.021059 ,  8.88916  , 12.465601 , 16.39167  , 12.512536 ,
+                        14.482495 , 11.428008 , 14.826544 ,  9.431978 , 13.301453 ,
+                        14.794727 , 14.699086 , 16.985245 , 15.13378  , 17.01096  ,
+                        10.933904 , 11.3807125, 10.78646  , 16.701368 , 13.155269 ,
+                        10.696098 , 16.344585 , 14.129975 , 14.740769 , 16.830936 ,
+                        15.363301 , 11.795459 , 15.764345 , 16.837313 , 12.681307 ,
+                        14.501582 , 13.145063 , 12.919049 , 15.524696 , 15.161263 ,
+                        12.80709  ,  9.810268 , 13.372867 , 12.891041 , 12.09371  ,
+                        11.801185 , 15.40629  , 10.9673   , 12.093878 , 13.23808  ,
+                        13.275379 , 11.030425 , 13.7553215, 11.737257 , 14.039867 ,
+                        7.3089795,  7.5213885,  9.646495 ,  8.599441 ,  8.71519  ,
+                        5.514182 ,  6.607811 , 12.834466 ,  7.291618 ,  7.5909886,
+                        16.267426 ,  9.006324 ,  9.439698 ,  7.15926  ,  8.051319 ,
+                        8.088756 ,  7.8305063,  9.640934 ,  9.272353 ,  8.354439 ,
+                        8.33176  ,  4.9442296,  9.511994 ,  6.539385 ,  7.5671463,
+                        9.677769 , 10.077647 , 11.036162 ,  3.6950805,  5.3213396,
+                        15.661696 , 16.112076 ,  9.220209 , 11.438494 ,  6.0530567,
+                        16.041002 , 11.547883 , 12.045012 , 10.05529  , 22.310757 ,
+                        7.80537  , 14.312904 , 13.352009 ,  9.891354 ,  9.784887 ,
+                        13.592736 , 10.995539 , 12.508782 ,  7.4699473, 12.881756 ,
+                        12.044169 , 19.539776 , 15.257382 , 16.65123  , 15.670284 ,
+                        11.521897 , 11.637071 , 12.905571 , 14.395081 , 13.844016 ,
+                        12.385043 , 10.622556 , 11.257451 ,  8.666015 , 13.137334 ,
+                        11.730389 , 12.335259 , 11.354957 , 14.101747 , 12.516272 ,
+                        15.350858 , 15.516988 , 12.535978 , 13.976821 , 17.061357 ,
+                        14.515347 , 17.432915 , 14.35492  , 12.218487 , 12.708157 ,
+                        14.509602 , 13.763436 , 13.199323 , 13.313967 , 14.678148 ,
+                        15.936587 , 17.12607  , 13.153656 , 10.037058 ,  7.423865 ,
+                        12.921805 ,  6.936595 , 13.705724 ,  4.7894106,  7.1884527,
+                        8.737328 ,  3.1286328,  5.9151635,  7.684082 , 11.460758 ,
+                        8.826709 ,  4.8171597,  4.2927785, 10.744955 , 20.117786 ,
+                        13.171628 ,  5.704103 , 14.9843645, 15.269016 ,  9.65403  ,
+                        6.236513 ,  3.6341562,  5.9820952, 16.538197 ,  4.5123873,
+                        4.0167494,  9.448283 ,  9.173247 , 10.294195 ,  9.639916 ,
+                        4.8310704,  7.373378 ,  9.429036 ,  9.869491 ,  5.0878434,
+                        5.8131547, 10.941274 , 11.219604 ,  6.82939  ,  6.9397283,
+                        5.1307497,  8.489858 ,  8.393783 ,  9.122754 ,  7.2400713,
+                        5.8758717, 10.579843 ,  9.685943 ,  9.140491 , 12.800261 ,
+                        6.1707335,  5.543158 ,  6.37051  ,  6.5046587,  6.1337056,
+                        4.976275 , 11.008603 ,  8.089436 ,  5.2120852, 10.238958 ,
+                        10.558798 , 12.026506 ,  8.103722 ,  6.7788525,  3.9033296,
+                        6.009597 ,  9.451349 ,  6.8879104,  4.279061 ,  7.789428 ,
+                        6.864155 , 10.811963 ,  7.018636 ,  7.573482 ,  7.0212703,
+                        12.213905 ,  9.236045 ,  3.6813154, 14.477719 ,  7.7647347,
+                        7.657902 ,  7.3790917, 11.8840275, 13.985491 ,  4.4762745,
+                        5.94586  ,  7.319223 ,  9.48066  ,  5.9847965, 13.017913 ,
+                        9.096772 , 11.605709 , 16.19153  ,  7.0180254, 12.230394 ,
+                        7.4350557,  9.063025 ,  6.8848233, 10.540604 ,  5.7859077,
+                        9.289821 , 15.86549  ,  5.48397  , 12.855432 ,  9.991918 ,
+                        6.7986927,  8.05094  ,  5.1537786,  7.016343 , 11.610358 ,
+                        3.837495 , 10.1794405, 13.239135 , 11.934212 ,  5.425908 ,
+                        6.855459 ,  4.816075 , 11.342717 ,  5.994981 ,  6.1969795,
+                        17.32707  , 11.835393 , 10.737593 ,  6.8414717, 10.567204 ,
+                        5.4684205,  9.997515 , 12.143566 , 10.479893 , 10.181096 ,
+                        5.3357043, 11.031071 , 11.25723  ,  5.678773 , 10.142859 ,
+                        6.548082 ,  4.6011395,  9.820372 ,  7.530714 ,  5.6161156,
+                        9.52498  , 11.822717 ,  6.6116076,  2.6074805, 13.429269 ,
+                        6.9678173, 11.687521 , 12.236306 ,  6.217203 ,  5.3865795,
+                        14.934564 ,  8.090316 ,  7.2572107,  9.753131 ,  8.822268 ,
+                        4.3493032,  5.3919234, 11.797848 ,  9.710548 ,  7.5174913,
+                        14.289838 , 11.277067 ,  4.2258983,  7.097305 , 18.129316 ,
+                        12.04495  , 11.859305 ,  7.3025494,  9.907678 , 14.360762 ,
+                        8.1713505, 13.694214 , 11.869516 ,  8.750341 ,  6.1776495,
+                        10.376714 ,  5.9566627, 12.777323 ,  6.7009377, 17.115627 ,
+                        7.685646 ,  5.6558604,  4.678447 , 13.051437 , 11.012899 ,
+                        9.845566 , 11.814046 , 10.831148 ,  3.5634387,  4.9834375,
+                        2.3554754,  6.3050485,  5.0073667, 11.701597 , 10.426035 ,
+                        9.914794 , 10.514083 , 10.794141 ,  8.4080715, 10.70974  ,
+                        12.124867 ,  6.0017543,  7.649061 , 10.446056 ,  6.2472043,
+                        12.787626 , 12.130221 ,  9.320525 ,  8.733866 ,  7.497744 ,
+                        9.2445   ,  6.2801156,  9.64971  , 10.880744 , 12.291624 ,
+                        4.8951187, 12.081722 ,  7.591355 ,  6.8205657,  7.8167315,
+                        8.725654 ,  5.4441223,  8.378785 , 10.145955 ,  5.0335126,
+                        10.775025 ,  8.389328 ,  6.877698 ,  5.619941 ,  7.693526 ,
+                        8.503053 , 11.223856 ,  5.160133 , 13.762598 ,  5.5123944,
+                        14.123771 ,  7.626049 , 11.954023 , 10.1791725, 10.346565 ,
+                        9.0125885, 12.475377 ,  8.252673 , 11.535772 ,  8.916764 ,
+                        11.139419 ,  7.4518204,  7.6208224,  4.718259 ,  7.6182995,
+                        3.6023192, 12.7465   ,  6.379441 ,  6.222041 ,  9.460899 ,
+                        6.3708296,  7.806422 ,  8.221031 ,  6.9791317,  6.83055  ,
+                        5.6000247, 10.012414 ,  5.811095 , 14.767918 , 13.473534 ,
+                        3.4461896, 13.873758 , 10.229213 ,  5.8937693,  6.25759  ,
+                        15.011016 ,  7.3293357, 11.705369 , 10.009353 ,  9.642102 ,
+                        9.64629  ,  9.155633 ,  8.768288 ,  5.9290986,  3.7535996,
+                        9.92896  ,  4.9851313,  9.1948805, 11.0766945, 10.2240095,
+                        24.897099 , 15.193479 , 12.723156 , 10.538682 ,  4.910994 ,
+                        13.023977 ,  8.261494 ,  6.2064695, 10.114009 , 15.107657 ,
+                        6.517258 , 12.397077 ,  5.539683 ,  8.409932 ,  8.757117 ,
+                        11.051216 ,  7.6570263,  8.730093 , 12.77859  , 10.129924 ,
+                        6.4150352,  9.067395 ,  5.3645887,  5.685756 , 12.538909 ,
+                        6.155089 ,  9.2667055, 11.949318 ,  7.770288 ,  5.5924144,
+                        14.889629 ,  4.4886036,  5.8040686, 10.472383 ,  3.5117674,
+                        6.6665797,  6.1026163, 10.859845 ,  9.863116 , 12.052918 ,
+                        12.588737 ,  3.9929051,  9.277023 ,  8.922599 ,  9.900033 ,
+                        8.093022 ,  1.6383991,  8.64933  ,  9.55212  , 14.292775 ,
+                        8.667101 , 12.7021   , 11.614873 ,  7.441296 , 11.659034 ,
+                        8.729921 , 12.653685 ,  7.6056495,  7.7882857, 12.166946 ,
+                        3.852963 ,  9.478823 ,  5.07191  ,  5.383152 ,  8.380659 ,
+                        13.693639 ,  7.6161537,  8.496728 ,  9.195345 , 12.159496 ,
+                        8.755552 ,  9.727746 , 10.75799  ,  4.2282763,  7.570674 ,
+                        5.9286747, 12.676092 ,  4.6559176,  8.487344 ,  7.775654 ,
+                        6.593262 ,  8.387504 , 14.227684 , 11.427807 ,  7.440069 ,
+                        7.3672805,  8.01333  ,  5.284218 , 14.332948 , 11.307185 ,
+                        10.738173 , 13.606696 ,  6.406048 ,  7.212828 ,  7.0790606,
+                        7.642906 , 10.822718 , 10.9420595,  8.671939 ,  7.2859893,
+                        6.1987143,  5.6765847,  9.009179 ,  7.4157877, 16.11624  ,
+                        12.320805 , 10.25289  , 13.595716 ,  9.826943 ,  9.49929  ,
+                        6.3116074,  7.439833 ,  7.958809 ,  4.6894765, 13.372389 ,
+                        7.4342966,  5.3759665,  7.989113 ,  5.815736 ,  5.605028 ,
+                        11.477219 ,  9.719017 ,  7.8892756, 10.329829 ,  5.607476 ,
+                        11.332267 ,  6.5743613,  8.326176 , 12.8778715, 10.327348 ,
+                        10.420819 ,  5.1718144, 10.474504 ,  6.0568705,  5.880212 ,
+                        9.07606  , 11.113923 , 14.92093  , 12.204115 , 17.66122  ,
+                        5.580801 ,  3.72529  , 15.600103 ,  9.457081 ,  4.001385 ,
+                        7.0291877, 11.616187 ,  6.676191 ,  8.051293 ,  5.6591883,
+                        5.4525123, 10.149748 ,  8.732568 ,  6.0015426,  8.96907  ,
+                        10.757334 , 10.351458 ,  6.6998715, 11.964538 ,  5.587641 ,
+                        6.848288 ,  8.5801325,  4.7317514, 12.487228 ,  6.4065604,
+                        5.5349445, 11.401005 ,  7.6889076,  5.171593 , 10.182955 ,
+                        6.539715 , 10.904772 ,  8.266155 ,  9.276647 ,  4.321268 ,
+                        5.6931143,  9.257353 ,  7.9552407,  8.507618 , 11.541511 ,
+                        8.972418 , 17.165365 , 10.463649 ,  5.887455 ,  9.892762 ,
+                        10.975602 ,  7.803511 ,  8.26034  ,  4.79533  , 13.701771 ,
+                        9.104507 , 12.267033 , 18.240162 ,  4.2651453,  8.196499 ,
+                        6.356257 , 12.824478 , 10.636053 ,  5.241818 ,  9.419101 ,
+                        6.6300707,  4.420878 ,  8.242999 ,  8.728341 ,  4.584805 ,
+                        5.547815 ,  9.056444 ,  8.650375 ,  9.859706 ,  4.570766 ,
+                        9.265617 ,  5.828682 ,  8.259866 ,  5.305815 ,  4.6342216,
+                        7.6256595, 16.492048 , 10.138784 ,  5.729284 ,  7.116413 ,
+                        14.425498 ,  7.807582 ,  6.057207 ,  6.812331 ,  8.20479  ,
+                        8.094281 , 12.260614 , 14.128645 ,  7.046825 ,  7.763736 ,
+                        8.41496  , 16.274887 ,  7.375737 , 13.130105 ,  7.749431 ,
+                        7.509299 ,  5.433946 , 12.743695 ,  7.3867564, 18.11572  ,
+                        6.113885 ,  9.384145 ,  7.965029 ,  4.263643 ,  7.0027604,
+                        6.621828 ,  9.589724 ,  2.39603  ,  8.302287 ,  5.669666 ,
+                        9.744057 , 10.360546 ,  6.3007126,  2.2440026,  6.0638347,
+                        7.4143667,  8.33416  ,  6.726969 ,  3.7957487,  5.173444 ,
+                        4.436493 , 10.07748  ,  8.519586 ,  6.4636483,  7.629194 ,
+                        10.625359 ,  6.887586 ,  7.721892 ,  7.16249  ,  9.2082815,
+                        11.207515 , 11.0120125,  8.268152 ,  7.153669 ,  9.965548 ,
+                        4.5221815, 11.129084 , 10.360726 ,  7.259001 ,  6.78921  ,
+                        8.141402 , 12.017651 ,  6.1856503,  5.6301665,  6.7742095,
+                        7.447849 ,  3.1765065,  7.07635  ,  4.7499003,  7.623963 ,
+                        4.056703 ,  6.805322 ,  7.9245534,  5.9127517,  8.997938 ,
+                        8.449005 ,  5.836143 ,  5.0545344,  5.99448  , 14.902458 ,
+                        9.28848  ,  9.4769125,  7.6576066,  8.22522  ,  5.812787 ,
+                        7.480289 ,  8.04259  ,  3.5099022,  5.089172 ,  8.491042 ,
+                        5.7677307, 11.871046 ,  6.581378 ,  7.702912 ,  9.055534 ,
+                        8.379984 ,  5.165582 ,  6.8364434, 11.858059 ,  8.353548 ,
+                        8.455578 ,  8.471602 ,  9.079713 ,  7.376801 ,  5.4419966],
                         dtype=np.float32),
     }
 }

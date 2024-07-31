@@ -1,3 +1,10 @@
+"""
+This code performs centralized learning (privacy-intrusive setting), where
+a model is trained on the data of all clients. Therefore, all client datasets are 
+unified into a single dataset. The model is then evaluated on the test set.
+
+"""
+
 # Libraies
 import torch
 import utils
@@ -19,7 +26,7 @@ def main()->None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic'],
+        choices=['diabetes','breast','synthetic', 'mnist', 'cifar10'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )

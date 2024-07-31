@@ -1,3 +1,10 @@
+"""
+This code performs the Local Centralized Learning, which locally trains a model for each client
+in the selected dataset. For each client, a xlsx file is created with the metrics of the model
+and the fold.
+
+"""
+
 # Libraies
 import torch
 import utils
@@ -18,7 +25,7 @@ def main()->None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic'],
+        choices=['diabetes','breast','synthetic', 'mnist', 'cifar10'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )
@@ -97,6 +104,7 @@ def main()->None:
         model, loss_train, loss_val, acc, acc_prime, acc_val, _ = train_fn(
             model, loss_fn, optimizer, X_train, y_train, 
             X_val, y_val, n_epochs=args.n_epochs, save_best=True, print_info=False,config=config)
+        
         
         # Save model
         if not os.path.exists(config['checkpoint_folder'] + f"{args.data_type}"):

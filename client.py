@@ -1,3 +1,15 @@
+"""
+This code creates a Flower client that can be used to train a model locally and share the updated 
+model with the server. When it is started, it connects to the Flower server and waits for instructions.
+If the server sends a model, the client trains the model locally and sends back the updated model.
+If abilitated, at the end of the training the client evaluates the last model, and plots the 
+metrics during the training.
+
+This is code is set to be used locally, but it can be used in a distributed environment by changing the server_address.
+In a distributed environment, the server_address should be the IP address of the server, and each client machine should 
+have this code running.
+"""
+
 # Libraies
 from collections import OrderedDict
 import torch
@@ -7,7 +19,7 @@ import argparse
 
 
 
-# Define Flower client
+# Define Flower client )
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, model, X_train, y_train, X_val, y_val, optimizer, num_examples, 
                  client_id, data_type, train_fn, evaluate_fn, config_model):
@@ -46,6 +58,7 @@ class FlowerClient(fl.client.NumPyClient):
             print(f"An error occurred during training of Honest client {self.client_id}: {e}, returning model with error") 
         
         return self.get_parameters(config), self.num_examples["trainset"], {}
+    
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
@@ -82,7 +95,7 @@ def main()->None:
     parser.add_argument(
         "--id",
         type=int,
-        choices=range(1, 40),
+        choices=range(1, 101),
         required=True,
         help="Specifies the artificial data partition",
     )
@@ -96,7 +109,7 @@ def main()->None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic','mnist'],
+        choices=['diabetes','breast','synthetic','mnist','cifar10'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )
@@ -136,7 +149,6 @@ def main()->None:
     client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type,
                            train_fn, evaluate_fn, config).to_client()
     fl.client.start_client(server_address="[::]:8098", client=client) # local host
-    #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 
     # read saved data and plot
     plot_fn(args.id, args.data_type, config, show=False)

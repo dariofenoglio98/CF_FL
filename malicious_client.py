@@ -1,3 +1,24 @@
+"""
+This code creates a (Malicious) Flower client that can be used to train a model locally and share
+the updated model with the server. When it is started, it connects to the Flower server and waits for instructions.
+If the server sends a model, the client trains the model locally and sends back the updated model.
+
+This is code is set to be used locally, but it can be used in a distributed environment by changing the server_address.
+In a distributed environment, the server_address should be the IP address of the server, and each client machine should 
+have this code running.
+
+The following attack types are considered:             (MP=Model Poisoning, DP=Data Poisoning)
+- None: No attack is performed
+- MP_random: Randomly generate parameters based on the mean and std of the original parameters (not used in the paper)
+- MP_noise: Add random noise to the original parameters based on the std of the original parameters (Crafted-noise)
+- MP_gradient: Flip the sign of the gradient and scale it by a factor (Inverted-gradient)
+- DP_flip: Flip the label (Label-flipping)
+- DP_random: Random data (not used in the paper)
+- DP_inverted_loss: Invert the loss function (Inverted-loss)
+- DP_inverted_loss_cf: Invert the loss function of the counterfactual generator alone (not used in the paper)
+"""
+
+
 # Libraies
 from collections import OrderedDict
 import torch
@@ -147,7 +168,7 @@ def main()->None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic','mnist'],
+        choices=['diabetes','breast','synthetic','mnist', 'cifar10'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )
@@ -194,7 +215,6 @@ def main()->None:
     client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type,
                            train_fn, evaluate_fn, args.attack_type, config).to_client()
     fl.client.start_client(server_address="[::]:8098", client=client) # local host
-    #fl.client.start_client(server_address="10.21.13.112:8080", client=client) # my IP 10.21.13.112
 
     # read saved data and plot
     # plot_fn(args.id, args.data_type, config, show=False, attack_type=args.attack_type)

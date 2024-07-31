@@ -1,3 +1,10 @@
+"""
+This code was used to calculate the mean and std of the results obtained from cross_validation.sh.
+The code is divided into three parts: centralized, privacy intrusive, and federated learning.
+For each settings, it creates appopriate files to store the results.
+"""
+
+
 # average results across folds in cross validation
 import numpy as np
 import pandas as pd
@@ -18,14 +25,14 @@ parser.add_argument(
 parser.add_argument(
     "--dataset",
     type=str,
-    choices=['diabetes','breast','synthetic'],
+    choices=['diabetes','breast','synthetic', 'mnist', 'cifar10'],
     default='diabetes',
     help="Specifies the dataset to be used",
 )
 parser.add_argument(
     "--data_type",
     type=str,
-    choices=['random','cluster','2cluster', 'mnist'],
+    choices=['random','cluster','2cluster'],
     default='random',
     help="Specifies the type of data partition",
 )
@@ -109,7 +116,7 @@ if args.training_type == "privacy_intrusive":
         hamm.append(d["Hamming"].values)
         rel_prox.append(d["Rel. Proximity"].values)
         # delede file
-        # os.remove(f"results_fold_{i+1}.xlsx")
+        os.remove(f"results_fold_{i+1}.xlsx")
 
     # mean results
     d["Proximity"] = np.mean(prox, axis=0)
@@ -154,73 +161,94 @@ if args.training_type == "centralized":
 
 # federated
 if args.training_type == "federated":
-    # federated learning - server
-    config = utils.config_tests[args.dataset][args.model]
-    # get all files
-    data = []
-    plot_metrics = []
-    prox, hamm, rel_prox = [], [], []
-    for i in range(args.K):
-        # read
-        d = pd.read_excel(f"results_fold_{i+1}.xlsx")
-        prox.append(d["Proximity"].values)
-        hamm.append(d["Hamming"].values)
-        rel_prox.append(d["Rel. Proximity"].values)
-        # delede file
-        # os.remove(f"results_fold_{i+1}.xlsx")
-        # read json
-        with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_{i+1}.json', 'r') as f:
-            plot_metrics.append(json.load(f))
-            f.close()
-        
-    # delede
-    for i in range(args.K):
-        os.remove(f"results_fold_{i+1}.xlsx")
+    if args.model == "predictor":
+        acc = []
+        for i in range(args.K):
+            # read
+            d = pd.read_excel(f"results_fold_{i+1}.xlsx")
+            acc.append(d["accuracy"].values)
     
-    # plot metrics
-    utils.plot_mean_std_metrics(plot_metrics, config['image_folder']+f'server_side_{args.data_type}/KFold_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_metrics')
+        for i in range(args.K):
+            os.remove(f"results_fold_{i+1}.xlsx")
 
-    # mean results
-    d["Proximity"] = np.mean(prox, axis=0)
-    d["Hamming"] = np.mean(hamm, axis=0)
-    d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
-    d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
+        # mean results
+        d["accuracy"] = np.mean(acc, axis=0)
+        d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}_predictor.xlsx")
 
-    # std results
-    d_std = d.copy()
-    d_std["Proximity"] = np.std(prox, axis=0)
-    d_std["Hamming"] = np.std(hamm, axis=0)
-    d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
-    d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
-  
-    # personalization
-    if args.pers == 1:
-        for client_id in range(1, args.n_clients+1):
-            # get all files
-            data = []
-            prox, hamm, rel_prox = [], [], []
-            for i in range(args.K):
-                # read
-                d = pd.read_excel(f"results_fold_{i+1}_personalization_{client_id}.xlsx")
-                prox.append(d["Proximity"].values)
-                hamm.append(d["Hamming"].values)
-                rel_prox.append(d["Rel. Proximity"].values)
-                # delede file
-                os.remove(f"results_fold_{i+1}_personalization_{client_id}.xlsx")
+        # std results
+        d_std = d.copy()
+        d_std["accuracy"] = np.std(acc, axis=0)
+        d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}_predictor.xlsx")
 
-            # mean results
-            d["Proximity"] = np.mean(prox, axis=0)
-            d["Hamming"] = np.mean(hamm, axis=0)
-            d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
-            d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}_{args.defense}.xlsx")
 
-            # std results
-            d_std = d.copy()
-            d_std["Proximity"] = np.std(prox, axis=0)
-            d_std["Hamming"] = np.std(hamm, axis=0)
-            d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
-            d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}_{args.defense}.xlsx")
+    else:
+        # federated learning - server
+        config = utils.config_tests[args.dataset][args.model]
+        # get all files
+        data = []
+        plot_metrics = []
+        prox, hamm, rel_prox = [], [], []
+        for i in range(args.K):
+            # read
+            d = pd.read_excel(f"results_fold_{i+1}.xlsx")
+            prox.append(d["Proximity"].values)
+            hamm.append(d["Hamming"].values)
+            rel_prox.append(d["Rel. Proximity"].values)
+            # delede file
+            # os.remove(f"results_fold_{i+1}.xlsx")
+            # read json
+            with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_{i+1}.json', 'r') as f:
+                plot_metrics.append(json.load(f))
+                f.close()
+            
+        # delede
+        for i in range(args.K):
+            os.remove(f"results_fold_{i+1}.xlsx")
         
+        # plot metrics
+        utils.plot_mean_std_metrics(plot_metrics, config['image_folder']+f'server_side_{args.data_type}/KFold_{args.n_rounds}_{args.attack_type}_{args.n_attackers}_{args.defense}_metrics')
+
+        # mean results
+        d["Proximity"] = np.mean(prox, axis=0)
+        d["Hamming"] = np.mean(hamm, axis=0)
+        d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
+        d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
+
+        # std results
+        d_std = d.copy()
+        d_std["Proximity"] = np.std(prox, axis=0)
+        d_std["Hamming"] = np.std(hamm, axis=0)
+        d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
+        d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
+    
+        # personalization
+        if args.pers == 1:
+            for client_id in range(1, args.n_clients+1):
+                # get all files
+                data = []
+                prox, hamm, rel_prox = [], [], []
+                for i in range(args.K):
+                    # read
+                    d = pd.read_excel(f"results_fold_{i+1}_personalization_{client_id}.xlsx")
+                    prox.append(d["Proximity"].values)
+                    hamm.append(d["Hamming"].values)
+                    rel_prox.append(d["Rel. Proximity"].values)
+                    # delede file
+                    os.remove(f"results_fold_{i+1}_personalization_{client_id}.xlsx")
+
+                # mean results
+                d["Proximity"] = np.mean(prox, axis=0)
+                d["Hamming"] = np.mean(hamm, axis=0)
+                d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
+                d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}_{args.defense}.xlsx")
+
+                # std results
+                d_std = d.copy()
+                d_std["Proximity"] = np.std(prox, axis=0)
+                d_std["Hamming"] = np.std(hamm, axis=0)
+                d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
+                d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_personalization_{client_id}_{args.defense}.xlsx")
+            
 
 print("Results saved in results_cross_val folder")
 

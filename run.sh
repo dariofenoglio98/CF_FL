@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# This code is usually called from cross_validation.sh, and it starts the server and clients 
+# for the federated learning process. The server is started first, and then the clients are started.
+
+
 # Initialize variables with default values
 model=""
 data_type=""
@@ -37,15 +41,6 @@ if [ -z "$model" ] || [ -z "$data_type" ] || [ -z "$n_rounds" ] || [ -z "$datase
     exit 1
 fi
 
-# model="net"
-# data_type="random"  # Options: "cluster", "2cluster", "random"
-# n_rounds=5
-# dataset="synthetic" # Options: "diabetes", "breast", "synthetic"
-# n_clients=20
-# n_attackers=1  # Adjust this as needed for testing attackers
-# attack_type="DP_inverted_loss" # Options: 'MP_random', "MP_noise", "DP_flip", "DP_random", "MP_gradient", "DP_inverted_loss"
-# pers=1
-# fold=0
 
 echo -e "\n\033[1;36mStarting server with model: defense $defense, model: $model, data_type: $data_type, rounds: $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
 #n_clients_server=$((n_clients+n_attackers))
