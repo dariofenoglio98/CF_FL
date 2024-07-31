@@ -23,22 +23,22 @@
 
 
 model="net" # Options: "net"=our model for cf+predictor, "vcnet"=model for cf+predictor, "predictor"
-data_type="random"  # Options: "2cluster", "random", "cluster" is an old version of 2cluster
+data_type="2cluster"  # Options: "2cluster", "random", "cluster" is an old version of 2cluster
 n_epochs=10 # number of epochs for centralized training 
-n_rounds=10 # number of rounds for federated learning - local epochs can be set directly on the server code
+n_rounds=5 # number of rounds for federated learning - local epochs can be set directly on the server code
 dataset="cifar10" # Options: "diabetes", "breast", "synthetic",'mnist', 'cifar10'
 n_clients=8 # number of clients, due to dataset dimension the number of clients must < 8 for real datasets, while diabetes can handle 20 clients
-n_attackers=2  # Adjust this as needed for testing attackers - our setting was 5 clients and 1 attacker for the real datasets, and 10 clients and 2 attackers for synthetic
+n_attackers=0  # Adjust this as needed for testing attackers - our setting was 5 clients and 1 attacker for the real datasets, and 10 clients and 2 attackers for synthetic
 pers=0 # to perform client-adaptation after the federated learning - only with our server
-K=3 # number of folds in the validation
+K=2 # number of folds in the validation
 seeds=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21)
 training_type="federated" # Options: "centralized"=local centralized learning, which separate models are locally trainined on each client
                           #          "privacy_intrusive"=one model with all data 
                           #          "federated"
 window_size=10 # window size for the moving average - used only with Server_Ours.py
-attack_type="DP_inverted_loss" # Options: ""=no attack, "MP_noise"=crafted-noise, "MP_gradient"="inverted-gradient", "DP_flip"=label-flipping
+attack_type="" # Options: ""=no attack, "MP_noise"=crafted-noise, "MP_gradient"="inverted-gradient", "DP_flip"=label-flipping
                #, "DP_inverted_loss"=inverted-loss, "DP_inverted_loss_cf"=inverted loss on cf (no clear poisoning - so not shown in the paper)
-defense="krum" # Options: "none"=FedAvg, "median", "krum", "trim", "bulyan", "ours"=Federated Behavioural Shields
+defense="none" # Options: "none"=FedAvg, "median", "krum", "trim", "bulyan", "ours"=Federated Behavioural Shields
                # With both "none" and "ours" FBPs is used to create Error and Counterfactual Behavioural Planes
 
 

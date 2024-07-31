@@ -92,6 +92,132 @@ def randomize_class(a, include=True):
 
 # Model
 EPS = 1e-9
+# class Net(nn.Module,):
+#     def __init__(self, config=None):
+#         super(Net, self).__init__()
+#         self.fc1 = nn.Linear(config['input_dim'], 512)
+#         self.fc2 = nn.Linear(512, 256)
+#         self.fc3 = nn.Linear(256, 256)
+#         self.fc4 = nn.Linear(256, 64)
+#         self.fc5 = nn.Linear(64, config['output_dim'])
+#         self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(config['input_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+#         self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(config['input_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+#         self.decoder = torch.nn.Sequential(torch.nn.Linear(32, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, config['input_dim']))
+#         self.concept_mean_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+#         self.concept_var_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+#         self.concept_mean_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+#         self.concept_var_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        
+#         self.relu = nn.ReLU()
+#         self.dropout = nn.Dropout(p=config['drop_prob'])
+#         self.mask = config['mask']   
+#         self.binary_feature = config['binary_feature']
+#         self.dataset = config['dataset']
+#         self.round = config['output_round']
+#         self.cid = nn.Parameter(torch.tensor([1]), requires_grad=False)
+        
+#         for m in self.modules():
+#             if isinstance(m, nn.Linear):
+#                 nn.init.xavier_uniform_(m.weight.data)
+
+#     def get_mask(self, x):
+#         mask = torch.rand(x.shape).to(x.device)
+#         return mask
+    
+#     def set_client_id(self, client_id):
+#         """Update the cid parameter to the specified client_id."""
+#         self.cid.data = torch.tensor([client_id], dtype=torch.float32, requires_grad=False)
+                
+#     def forward(self, x, include=True, mask_init=None):
+#         # standard forward pass (predictor)
+#         out = self.fc1(x)
+#         out = self.relu(out)
+        
+#         out = self.fc2(out)
+#         out = self.relu(out)
+        
+#         out = self.fc3(out)
+#         out = self.relu(out)
+        
+#         out = self.fc4(out)
+#         out = self.relu(out)
+        
+#         out = self.fc5(out)
+        
+#         # concept mean and variance (encoder)
+#         z2_mu = self.concept_mean_predictor(x)
+#         z2_log_var = self.concept_var_predictor(x)
+
+#         # sample z from q
+#         z2_sigma = torch.exp(z2_log_var / 2) + EPS
+#         qz2_x = torch.distributions.Normal(z2_mu, z2_sigma)
+#         z2 = qz2_x.rsample()
+#         p_z2 = torch.distributions.Normal(torch.zeros_like(qz2_x.mean), torch.ones_like(qz2_x.mean))
+
+#         # decoder
+#         x_reconstructed = self.decoder(z2)
+#         x_reconstructed = F.hardtanh(x_reconstructed, -0.1, 1.1)
+
+#         y_prime = randomize_class((out).float(), include=include)
+        
+#         # concept mean and variance (encoder2)
+#         z2_c_y_y_prime = torch.cat((z2, x, out, y_prime), dim=1)
+#         z3_mu = self.concept_mean_qz3_predictor(z2_c_y_y_prime)
+#         z3_log_var = self.concept_var_qz3_predictor(z2_c_y_y_prime)
+
+#         # sample z from q
+#         z3_sigma = torch.exp(z3_log_var / 2) + EPS
+#         qz3_z2_c_y_y_prime = torch.distributions.Normal(z3_mu, z3_sigma)
+#         z3 = qz3_z2_c_y_y_prime.rsample(sample_shape=torch.Size())
+        
+#         # concept mean and variance (encoder3)
+#         z2_c_y = torch.cat((z2, x, out), dim=1)
+#         z3_mu = self.concept_mean_z3_predictor(z2_c_y)
+#         z3_log_var = self.concept_var_z3_predictor(z2_c_y)
+#         z3_sigma = torch.exp(z3_log_var / 2) + EPS
+#         pz3_z2_c_y = torch.distributions.Normal(z3_mu, z3_sigma)
+        
+#         # decoder
+#         x_prime_reconstructed = self.decoder(z3)
+#         x_prime_reconstructed = F.hardtanh(x_prime_reconstructed, -0.1, 1.1)
+#         # x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=0, max=1) 
+#         if self.training:
+#             mask = self.get_mask(x)
+#         else:
+#             if mask_init is not None:
+#                 mask = mask_init
+#                 mask = mask.to(x.device)
+#                 mask = mask.repeat(y_prime.shape[0], 1)
+#             else:
+#                 mask = self.get_mask(x)
+
+#         mask[:, self.binary_feature] = (mask[:, self.binary_feature] > 0.5).float()
+        
+#         if not self.training:
+#             x_prime_reconstructed = torch.clamp(x_prime_reconstructed, min=-0.03, max=1.03)
+#             if self.round:
+#                 x_prime_reconstructed = inverse_min_max_scaler(x_prime_reconstructed.detach().cpu().numpy(), dataset=self.dataset)
+#                 x_prime_reconstructed = np.round(x_prime_reconstructed)
+#                 x_prime_reconstructed = min_max_scaler(x_prime_reconstructed, dataset=self.dataset)
+#                 x_prime_reconstructed = torch.Tensor(x_prime_reconstructed).to(x.device)
+        
+#         # predictor on counterfactuals
+#         out2 = self.fc1(x_prime_reconstructed)
+#         out2 = self.relu(out2)
+        
+#         out2 = self.fc2(out2)
+#         out2 = self.relu(out2)
+        
+#         out2 = self.fc3(out2)
+#         out2 = self.relu(out2)
+        
+#         out2 = self.fc4(out2)
+#         out2 = self.relu(out2)
+        
+#         out2 = self.fc5(out2)
+        
+#         return out, x_reconstructed, qz2_x, p_z2, out2, x_prime_reconstructed, qz3_z2_c_y_y_prime, pz3_z2_c_y, y_prime, z2, z3
+
 class Net(nn.Module,):
     def __init__(self, config=None):
         super(Net, self).__init__()
@@ -103,10 +229,10 @@ class Net(nn.Module,):
         self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(config['input_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
         self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(config['input_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
         self.decoder = torch.nn.Sequential(torch.nn.Linear(32, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, config['input_dim']))
-        self.concept_mean_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.concept_var_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.concept_mean_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
-        self.concept_var_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + 4, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_mean_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + config['output_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_z3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + config['output_dim'], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_mean_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + config['output_dim']*2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
+        self.concept_var_qz3_predictor = torch.nn.Sequential(torch.nn.Linear(32 + config['input_dim'] + config['output_dim']*2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 32))
         
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=config['drop_prob'])
@@ -128,7 +254,7 @@ class Net(nn.Module,):
         """Update the cid parameter to the specified client_id."""
         self.cid.data = torch.tensor([client_id], dtype=torch.float32, requires_grad=False)
                 
-    def forward(self, x, include=True, mask_init=None):
+    def forward(self, x, include=True, mask_init=None, y_prime=None):
         # standard forward pass (predictor)
         out = self.fc1(x)
         out = self.relu(out)
@@ -158,7 +284,8 @@ class Net(nn.Module,):
         x_reconstructed = self.decoder(z2)
         x_reconstructed = F.hardtanh(x_reconstructed, -0.1, 1.1)
 
-        y_prime = randomize_class((out).float(), include=include)
+        if y_prime is None:
+            y_prime = randomize_class((out).float(), include=include)
         
         # concept mean and variance (encoder2)
         z2_c_y_y_prime = torch.cat((z2, x, out, y_prime), dim=1)
@@ -217,6 +344,7 @@ class Net(nn.Module,):
         out2 = self.fc5(out2)
         
         return out, x_reconstructed, qz2_x, p_z2, out2, x_prime_reconstructed, qz3_z2_c_y_y_prime, pz3_z2_c_y, y_prime, z2, z3
+    
 
 class ConceptVCNet(nn.Module,):
     def __init__(self, config=None):
@@ -226,10 +354,10 @@ class ConceptVCNet(nn.Module,):
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 256)
         self.fc4 = nn.Linear(256, 64)
-        self.fc5 = nn.Linear(64, 2)
-        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(64 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
-        self.decoder = torch.nn.Sequential(torch.nn.Linear(20 + 2, 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, config["input_dim"]))
+        self.fc5 = nn.Linear(64, config["output_dim"])
+        self.concept_mean_predictor = torch.nn.Sequential(torch.nn.Linear(64 + config["output_dim"], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
+        self.concept_var_predictor = torch.nn.Sequential(torch.nn.Linear(64 + config["output_dim"], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, 20))
+        self.decoder = torch.nn.Sequential(torch.nn.Linear(20 + config["output_dim"], 128), torch.nn.LeakyReLU(), torch.nn.Linear(128, config["input_dim"]))
         
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=config['drop_prob'])
@@ -246,7 +374,7 @@ class ConceptVCNet(nn.Module,):
         """Update the cid parameter to the specified client_id."""
         self.cid.data = torch.tensor([client_id], dtype=torch.float32, requires_grad=False)
 
-    def forward(self, x, mask_init=None, include=True):
+    def forward(self, x, mask_init=None, include=True, y_prime=None):
         # standard forward pass (predictor)
         out = self.fc1(x)
         out = self.relu(out)
@@ -274,7 +402,8 @@ class ConceptVCNet(nn.Module,):
         if self.training:
             cond = out
         else:
-            y_prime = randomize_class((out).float(), include=include)
+            if y_prime is None:
+                y_prime = randomize_class((out).float(), include=include)
             cond = y_prime
 
         # decoder
@@ -729,7 +858,7 @@ def evaluation_central_test_predictor(args, best_model_round=1, model_path=None,
     data.to_csv(config['history_folder'] + f"server_{data_type}/metrics_FL.csv")
     return y, acc
 
-def server_side_evaluation(X_test, y_test, model=None, config=None): 
+def server_side_evaluation(X_test, y_test, model=None, config=None, y_prime=None): 
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -749,9 +878,9 @@ def server_side_evaluation(X_test, y_test, model=None, config=None):
         else:
             mask = config['mask_evaluation']
             if model.__class__.__name__ == "Net":
-                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False, mask_init=mask)
+                H_test, x_reconstructed, q, p, H2_test, x_prime, q_prime, p_prime, y_prime, z2, z3 = model(X_test, include=False, mask_init=mask, y_prime=y_prime)
             elif model.__class__.__name__ == "ConceptVCNet":
-                H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask)
+                H_test, x_reconstructed, q, y_prime, H2_test = model(X_test, include=False, mask_init=mask, y_prime=y_prime)
                 x_prime = x_reconstructed
 
             # compute errors
@@ -942,13 +1071,13 @@ def aggregate_metrics(client_data, server_round, data_type, dataset, config, fol
         return w_dist, w_error, w_mix
  
 # distance metrics with training set
-def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: torch.Tensor):
+def distance_train(a: torch.Tensor, b: torch.Tensor, y: torch.Tensor, y_set: torch.Tensor, num_classes=2):
     """
     mean_distance = distance_train(x_prime_test, X_train, H2_test, y_train)
     """
     X_y = torch.unique(torch.cat((b, y_set.unsqueeze(-1).float()), dim=-1), dim=0)
     b = X_y[:, :b.shape[1]]
-    y_set = torch.nn.functional.one_hot(X_y[:, b.shape[1]:].to(torch.int64), 2).float().squeeze(1)
+    y_set = torch.nn.functional.one_hot(X_y[:, b.shape[1]:].to(torch.int64), num_classes=num_classes).float().squeeze(1)
     a_ext = a.repeat(b.shape[0], 1, 1).transpose(1, 0)
     b_ext = b.repeat(a.shape[0], 1, 1)
     y_ext = y.repeat(y_set.shape[0], 1, 1).transpose(1, 0)
@@ -986,7 +1115,7 @@ def intersection_over_union(a: torch.Tensor, b: torch.Tensor):
 
 def create_dynamic_df(num_clients, validity, accuracy, loss, mean_distance,
                       mean_distance_list, hamming_prox, hamming_prox_list,
-                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, best_round):
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, best_round, training_time):
     # Ensure that mean_distance_list and hamming_prox_list have the correct length
     if len(mean_distance_list) != num_clients or len(hamming_prox_list) != num_clients:
         raise ValueError("mean_distance_list and hamming_prox_list must match num_clients")
@@ -1013,20 +1142,26 @@ def create_dynamic_df(num_clients, validity, accuracy, loss, mean_distance,
     relative_prox_col += relative_prox_list
     relative_prox_col += [None] * 6  # Adjusting length to match labels
 
+    # training time
+    training_time = [training_time]
+    training_time += [None] * (len(relative_prox_col)-1)
+
     # Creating the DataFrame
     df = pd.DataFrame({
         'Label': label_col,
         'Proximity': proximity_col,
         'Hamming': hamming_col,
-        'Rel. Proximity': relative_prox_col
+        'Rel. Proximity': relative_prox_col,
+        'Time': training_time,
     })
 
     return df
 
-def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name='', loss_fn=torch.nn.CrossEntropyLoss()):
+def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, config=None, spec_client_val=False, client_id=None, centralized=False, add_name='', loss_fn=torch.nn.CrossEntropyLoss(), training_time=None):
     n_clients=args.n_clients
     data_type=args.data_type
     dataset=args.dataset
+    num_classes=config['output_dim']
     
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
@@ -1141,13 +1276,13 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m") # Faster evaluation - Not used in the paper for validation - remove sample reduction for consistent evaluation
     if args.dataset == "diabetes" or args.dataset == "mnist" or args.dataset == "cifar10":
         idx = np.random.choice(len(X_train_rescaled_tot), 100, replace=False)
-        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[idx].cpu(), H2_test, y_train_tot[idx].cpu())
+        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[idx].cpu(), H2_test, y_train_tot[idx].cpu(), num_classes=num_classes)
     else:
         mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
     print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
     mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
     for i in range(n_clients):
-        mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i][:100].cpu(), H2_test, y_train_list[i][:100].cpu())
+        mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i][:100].cpu(), H2_test, y_train_list[i][:100].cpu(), num_classes=num_classes)
         print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
         mean_distance_list.append(mean_distance_n)
         hamming_prox_list.append(hamming_proxn)
@@ -1169,7 +1304,7 @@ def evaluate_distance(args, best_model_round=1, model_fn=None, model_path=None, 
     # Create a dictionary for the xlsx file
     df = create_dynamic_df(n_clients, validity, accuracy, loss.cpu().item(), mean_distance,
                       mean_distance_list, hamming_prox, hamming_prox_list,
-                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, best_model_round)
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, best_model_round, training_time)
 
     # create folder
     if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
@@ -1714,6 +1849,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
     attack_type=args.attack_type
     data_type=args.data_type 
     dataset=args.dataset
+    num_classes = config["output_dim"]
     
     # function
     train_fn = trainings[config["model_name"]]
@@ -1855,13 +1991,13 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
                 print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
                 if args.dataset == "niente":
-                    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu())
+                    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot[:-40000].cpu(), H2_test, y_train_tot[:-40000].cpu(), num_classes=num_classes)
                 else:
-                    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
+                    mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu(), num_classes=num_classes)
                 print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
                 mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
                 for i in range(n_clients_honest):
-                    mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
+                    mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu(), num_classes=num_classes)
                     print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
                     mean_distance_list.append(mean_distance_n)
                     hamming_prox_list.append(hamming_proxn)
@@ -1883,7 +2019,7 @@ def personalization(args, model_fn=None, config=None, best_model_round=None):
                 # Create a dictionary for the xlsx file
                 df = create_dynamic_df(n_clients_honest, validity, accuracy, loss.cpu().item(), mean_distance,
                       mean_distance_list, hamming_prox, hamming_prox_list,
-                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, None)
+                      hamming_distance, euclidean_distance, relative_distance, iou, var, relative_prox, relative_prox_list, None, None)
 
                 # create folder
                 if not os.path.exists(config['history_folder'] + f"server_{data_type}/"):
@@ -1927,6 +2063,7 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
                                client_id=1, n_clients=3, model=None, data_type="random", config=None, add_name="", loss_fn=torch.nn.CrossEntropyLoss()):
     dataset = config["dataset"]
     model_name = config["model_name"]
+    num_classes = config["output_dim"]
     # check device
     device = check_gpu(manual_seed=True, print_info=False)
 
@@ -2014,11 +2151,11 @@ def client_specific_evaluation(X_train_rescaled_tot, X_train_rescaled, y_train_t
 
         # evaluate distance - # you used x_prime and X_train (not scaled) !!!!!!!
         print(f"\033[1;32mDistance Evaluation - Counterfactual: Training Set\033[0m")
-        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu())
+        mean_distance, hamming_prox, relative_prox = distance_train(x_prime_rescaled, X_train_rescaled_tot.cpu(), H2_test, y_train_tot.cpu(), num_classes=num_classes)
         print(f"Mean distance with all training sets (proximity, hamming proximity, relative proximity): {mean_distance:.4f}, {hamming_prox:.4f}, {relative_prox:.4f}")
         mean_distance_list, hamming_prox_list, relative_prox_list = [], [], []
         for i in range(n_clients):
-            mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu())
+            mean_distance_n, hamming_proxn, relative_proxn = distance_train(x_prime_rescaled, X_train_rescaled[i].cpu(), H2_test, y_train_list[i].cpu(), num_classes=num_classes)
             print(f"Mean distance with training set {i+1} (proximity, hamming proximity, relative proximity): {mean_distance_n:.4f}, {hamming_proxn:.4f}, {relative_proxn:.4f}")
             mean_distance_list.append(mean_distance_n)
             hamming_prox_list.append(hamming_proxn)

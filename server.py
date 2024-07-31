@@ -166,7 +166,7 @@ def main() -> None:
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['diabetes','breast','synthetic','mnist'],
+        choices=['diabetes','breast','synthetic','mnist', 'cifar10'],
         default='diabetes',
         help="Specifies the dataset to be used",
     )
@@ -212,8 +212,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Start time
-    start_time = time.time()
 
     if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}"):
         os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}")
@@ -244,12 +242,21 @@ def main() -> None:
         model_config=config,
     )
 
+    # Start time
+    start_time = time.time()
+
     # Start Flower server for three rounds of federated learning
     history = fl.server.start_server(
         server_address="0.0.0.0:8098",   # 0.0.0.0 listens to all available interfaces
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )
+
+    # Print training time in minutes (grey color)
+    training_time = (time.time() - start_time)/60
+    print(f"\033[90mTraining time: {round(training_time, 2)} minutes\033[0m")
+    time.sleep(1)
+    
     # convert history to list
     loss = [k[1] for k in history.losses_distributed]
     accuracy = [k[1] for k in history.metrics_distributed['accuracy']]
@@ -278,13 +285,9 @@ def main() -> None:
         utils.evaluation_central_test(args, best_model_round=best_loss_round, model=model, config=config)
         
         # Evaluate distance with all training sets
-        df_excel = utils.evaluate_distance(args, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=False)
+        df_excel = utils.evaluate_distance(args, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=False, training_time=training_time)
         if args.fold != 0:
             df_excel.to_excel(f"results_fold_{args.fold}.xlsx")
-
-    # Print training time in minutes (grey color)
-    print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
-    time.sleep(1)
     
     # personalization (now done on the server but can be uqually done on the client side) 
     if args.pers == 1:
@@ -301,7 +304,7 @@ def main() -> None:
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
     
     # Create gif
-    utils.create_gif(args, config)
+    # utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()

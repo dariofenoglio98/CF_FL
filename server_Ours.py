@@ -105,6 +105,8 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         self.fold = fold
         self.client_memory = {}
         self.window_size = window_size
+        self.device = utils.check_gpu(manual_seed=True)
+
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
@@ -112,7 +114,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         if self.dataset == 'diabetes':
             # randomly pick N samples <= 10605
-            idx = np.random.choice(len(self.X_test), 800, replace=False)
+            idx = np.random.choice(len(self.X_test), 100, replace=False)
             self.X_test = self.X_test[idx]
             self.y_test = self.y_test[idx]
         elif self.dataset == 'breast':
@@ -173,6 +175,11 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         # for each clients evaluate the model
         client_data = {}
         client_cid = []
+        if self.dataset == 'cifar10':  
+            y_prime = torch.nn.functional.one_hot(torch.tensor(np.random.randint(0, 9, size=len(self.X_test))), num_classes=10).to(self.device)  
+        else:
+            y_prime = None
+        
         for client, fit_res in results:
             # Load model
             params = fl.common.parameters_to_ndarrays(fit_res.parameters)
@@ -189,7 +196,7 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 self.model.load_state_dict(state_dict, strict=True)
                 # Evaluate the model
                 try:
-                    client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+                    client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config, y_prime=y_prime)
                     client_data[cid] = client_metrics
                 except Exception as e:
                     print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero weights") 
@@ -327,8 +334,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Start time
-    start_time = time.time()
 
     if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}"):
         os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}")
@@ -359,6 +364,9 @@ def main() -> None:
         model_config=config,
         window_size=args.window_size,
     )
+    
+    # Start time
+    start_time = time.time()
 
     # Start Flower server for three rounds of federated learning
     history = fl.server.start_server(
@@ -366,6 +374,12 @@ def main() -> None:
         config=fl.server.ServerConfig(num_rounds=args.rounds),
         strategy=strategy,
     )
+    
+    # Print training time in minutes (grey color)
+    training_time = (time.time() - start_time)/60
+    print(f"\033[90mTraining time: {round(training_time, 2)} minutes\033[0m")
+    time.sleep(1)
+    
     # convert history to list
     loss = [k[1] for k in history.losses_distributed]
     accuracy = [k[1] for k in history.metrics_distributed['accuracy']]
@@ -390,13 +404,9 @@ def main() -> None:
         utils.evaluation_central_test(args, best_model_round=best_loss_round, model=model, config=config)
         
         # Evaluate distance with all training sets
-        df_excel = utils.evaluate_distance(args, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=False)
+        df_excel = utils.evaluate_distance(args, best_model_round=best_loss_round, model_fn=model, config=config, spec_client_val=False, training_time=training_time)
         if args.fold != 0:
             df_excel.to_excel(f"results_fold_{args.fold}.xlsx")
-
-    # Print training time in minutes (grey color)
-    print(f"\033[90mTraining time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
-    time.sleep(1)
     
     # personalization (now done on the server but can be uqually done on the client side) 
     if args.pers == 1:
@@ -413,7 +423,7 @@ def main() -> None:
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
     
     # Create gif
-    utils.create_gif(args, config)
+    # utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()

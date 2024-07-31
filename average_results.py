@@ -108,13 +108,15 @@ if not os.path.exists("results_cross_val"):
 if args.training_type == "privacy_intrusive":
     # get all files
     data = []
-    prox, hamm, rel_prox = [], [], []
+    prox, hamm, rel_prox, train_time = [], [], [], []
     for i in range(args.K):
         # read 
         d = pd.read_excel(f"results_fold_{i+1}.xlsx")
         prox.append(d["Proximity"].values)
         hamm.append(d["Hamming"].values)
         rel_prox.append(d["Rel. Proximity"].values)
+        train_time.append(d["Time"])
+
         # delede file
         os.remove(f"results_fold_{i+1}.xlsx")
 
@@ -122,6 +124,7 @@ if args.training_type == "privacy_intrusive":
     d["Proximity"] = np.mean(prox, axis=0)
     d["Hamming"] = np.mean(hamm, axis=0)
     d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
+    d["Time"] = np.mean(train_time, axis=0)
     d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}.xlsx")
 
     # std results
@@ -129,6 +132,7 @@ if args.training_type == "privacy_intrusive":
     d_std["Proximity"] = np.std(prox, axis=0)
     d_std["Hamming"] = np.std(hamm, axis=0)
     d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
+    d_std["Time"] = np.std(train_time, axis=0)
     d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}.xlsx")
 
 # centralized
@@ -136,13 +140,14 @@ if args.training_type == "centralized":
     for client_id in range(1, args.n_clients+1):
         # get all files
         data = []
-        prox, hamm, rel_prox = [], [], []
+        prox, hamm, rel_prox, train_time = [], [], [], []
         for i in range(args.K):
             # read 
             d = pd.read_excel(f"results_fold_{i+1}_{client_id}.xlsx")
             prox.append(d["Proximity"].values)
             hamm.append(d["Hamming"].values)
             rel_prox.append(d["Rel. Proximity"].values)
+            train_time.append(d["Time"])
             # delede file
             os.remove(f"results_fold_{i+1}_{client_id}.xlsx")
 
@@ -150,6 +155,7 @@ if args.training_type == "centralized":
         d["Proximity"] = np.mean(prox, axis=0)
         d["Hamming"] = np.mean(hamm, axis=0)
         d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
+        d["Time"] = np.mean(train_time, axis=0)
         d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_client_id_{client_id}.xlsx")
 
         # std results
@@ -157,6 +163,7 @@ if args.training_type == "centralized":
         d_std["Proximity"] = np.std(prox, axis=0)
         d_std["Hamming"] = np.std(hamm, axis=0)
         d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
+        d_std["Time"] = np.std(train_time, axis=0)
         d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_client_id_{client_id}.xlsx")
 
 # federated
@@ -187,13 +194,14 @@ if args.training_type == "federated":
         # get all files
         data = []
         plot_metrics = []
-        prox, hamm, rel_prox = [], [], []
+        prox, hamm, rel_prox, train_time = [], [], [], []
         for i in range(args.K):
             # read
             d = pd.read_excel(f"results_fold_{i+1}.xlsx")
             prox.append(d["Proximity"].values)
             hamm.append(d["Hamming"].values)
             rel_prox.append(d["Rel. Proximity"].values)
+            train_time.append(d["Time"])
             # delede file
             # os.remove(f"results_fold_{i+1}.xlsx")
             # read json
@@ -212,6 +220,7 @@ if args.training_type == "federated":
         d["Proximity"] = np.mean(prox, axis=0)
         d["Hamming"] = np.mean(hamm, axis=0)
         d["Rel. Proximity"] = np.mean(rel_prox, axis=0)
+        d["Time"] = np.mean(train_time, axis=0)
         d.to_excel(f"results_cross_val/mean_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
 
         # std results
@@ -219,6 +228,7 @@ if args.training_type == "federated":
         d_std["Proximity"] = np.std(prox, axis=0)
         d_std["Hamming"] = np.std(hamm, axis=0)
         d_std["Rel. Proximity"] = np.std(rel_prox, axis=0)
+        d_std["Time"] = np.std(train_time, axis=0)
         d_std.to_excel(f"results_cross_val/std_{args.training_type}_{args.dataset}_{args.data_type}_{args.n_clients}_{args.model}_{args.attack_type}_{args.n_attackers}_{args.defense}_w{args.window_size}.xlsx")
     
         # personalization
