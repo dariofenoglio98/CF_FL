@@ -40,12 +40,12 @@ if args.n_clients < 101:
     df_train = pd.read_csv('data/diabetes_binary_5050split_health_indicators_BRFSS2015.csv')
     df_train = df_train.rename(columns={'Diabetes_binary': 'Labels'})
     # Breast cancer
-    # X_breast = pd.read_csv('data/X_breast.csv')
-    # y_breast = pd.read_csv('data/y_breast.csv')
-    # y_breast['Diagnosis'] = y_breast['Diagnosis'].map({'M': 1, 'B': 0})
-    # # add labels to X_breast with the same name as in df_train
-    # df_train_breast = pd.DataFrame(X_breast)
-    # df_train_breast['Labels'] = y_breast['Diagnosis']
+    X_breast = pd.read_csv('data/X_breast.csv')
+    y_breast = pd.read_csv('data/y_breast.csv')
+    y_breast['Diagnosis'] = y_breast['Diagnosis'].map({'M': 1, 'B': 0})
+    # add labels to X_breast with the same name as in df_train
+    df_train_breast = pd.DataFrame(X_breast)
+    df_train_breast['Labels'] = y_breast['Diagnosis']
     # MNIST
     # x = np.load('data/train_features_FL.npy')
     # y = np.load('data/train_tasks_FL.npy')
@@ -57,7 +57,7 @@ if args.n_clients < 101:
     # df_MNIST = pd.DataFrame(x, columns=[str(i) for i in range(1000)])
     # df_MNIST['Labels'] = y
     # df_MNIST = df_MNIST.sample(frac=1).reset_index(drop=True)
-    # CIFAR10
+    # # CIFAR10
     x = np.load('data/train_features_cifar10.npy')
     y = np.load('data/train_tasks_cifar10.npy')
     # pick random 10000 indexes
@@ -70,7 +70,7 @@ if args.n_clients < 101:
     df_CIFAR10 = df_CIFAR10.sample(frac=1).reset_index(drop=True)
 
     print(f"Diabetes dataset: {df_train.shape}")
-    # print(f"Breast cancer dataset: {df_train_breast.shape}")
+    print(f"Breast cancer dataset: {df_train_breast.shape}")
     # print(f"MNIST dataset: {df_MNIST.shape}")
     print(f"CIFAR10 dataset: {df_CIFAR10.shape}")
 
@@ -85,12 +85,12 @@ if args.n_clients < 101:
     print(f"Min values diabetes: {min_values_diabetes}")
     print(f"Max values diabetes: {max_values_diabetes}")
 
-    # XXX = df_train_breast.drop('Labels', axis=1)
-    # XXX = XXX.drop(columns=["Unnamed: 0"])
-    # min_values_breast = XXX.min().values
-    # max_values_breast = XXX.max().values
-    # print(f"Min values breast: {min_values_breast}")
-    # print(f"Max values breast: {max_values_breast}")
+    XXX = df_train_breast.drop('Labels', axis=1)
+    XXX = XXX.drop(columns=["Unnamed: 0"])
+    min_values_breast = XXX.min().values
+    max_values_breast = XXX.max().values
+    print(f"Min values breast: {min_values_breast}")
+    print(f"Max values breast: {max_values_breast}")
 
     # XXXX = df_MNIST.drop('Labels', axis=1)
     # min_values_mnist = XXXX.min().values
@@ -146,7 +146,7 @@ if args.n_clients < 101:
         print(f'Saved: {file_prefix}_random_test.csv of shape {df_test.shape}\n')
 
     random_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
-    # random_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+    random_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
     # random_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
     random_split(df_CIFAR10, N, file_prefix='data/df_cifar10', seed=args.seed)
 
@@ -249,7 +249,7 @@ if args.n_clients < 101:
         return pairs
 
     cluster_by_class_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
-    # cluster_by_class_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+    cluster_by_class_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
     # cluster_by_class_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
     cluster_by_class_split(df_CIFAR10, N, file_prefix='data/df_cifar10', seed=args.seed)
     
@@ -293,7 +293,7 @@ if args.n_clients < 101:
 
 
     cluster_split(df_train, N, file_prefix='data/df_diabetes', seed=args.seed)
-    # cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
+    cluster_split(df_train_breast, N, file_prefix='data/df_breast', seed=args.seed)
     # cluster_split(df_MNIST, N, file_prefix='data/df_mnist', seed=args.seed)
     cluster_split(df_CIFAR10, N, file_prefix='data/df_cifar10', seed=args.seed)
     
@@ -312,8 +312,8 @@ if args.n_clients < 101:
     # find min and max values for each feature
     min_values_diabetes = df_train.min().values
     max_values_diabetes = df_train.max().values
-    # min_values_breast = df_train_breast.min().values
-    # max_values_breast = df_train_breast.max().values
+    min_values_breast = df_train_breast.min().values
+    max_values_breast = df_train_breast.max().values
     # min_values_mnist = df_MNIST.min().values
     # max_values_mnist = df_MNIST.max().values
     min_values_cifar10 = df_CIFAR10.min().values
@@ -321,7 +321,7 @@ if args.n_clients < 101:
 
     # example for both datasets 
     df_diabetes = pd.read_csv('data/df_diabetes_random_1.csv')
-    # df_breast = pd.read_csv('data/df_breast_random_1.csv')
+    df_breast = pd.read_csv('data/df_breast_random_1.csv')
     # df_mnist = pd.read_csv('data/df_mnist_random_1.csv')
     df_cifar10 = pd.read_csv('data/df_cifar10_random_1.csv')
 
@@ -350,7 +350,7 @@ if args.n_clients < 101:
             print(f'Saved: {file_prefix}_DP_random_{i+1}.csv of shape {attacker_df.shape}')
 
     create_attackers_random(df_diabetes, N_attackers, min_values_diabetes, max_values_diabetes, file_prefix='data/df_diabetes_random', seed=args.seed)
-    # create_attackers_random(df_breast, N_attackers, min_values_breast, max_values_breast, file_prefix='data/df_breast_random', seed=args.seed)
+    create_attackers_random(df_breast, N_attackers, min_values_breast, max_values_breast, file_prefix='data/df_breast_random', seed=args.seed)
     # create_attackers_random(df_mnist, N_attackers, min_values_mnist, max_values_mnist, file_prefix='data/df_mnist_random', seed=args.seed)
     create_attackers_random(df_cifar10, N_attackers, min_values_cifar10, max_values_cifar10, file_prefix='data/df_cifar10_random', seed=args.seed)
 
@@ -372,24 +372,24 @@ if args.n_clients < 101:
         client.to_csv(new_path + '.csv', index=False)
         print(f"Saved: {new_path}.csv of shape {client.shape}")
 
-    # flip_client('data/df_breast_random_1')
-    # flip_client('data/df_breast_random_2')
+    flip_client('data/df_breast_random_1')
+    flip_client('data/df_breast_random_2')
     flip_client('data/df_diabetes_random_1')
     flip_client('data/df_diabetes_random_2')
     # flip_client('data/df_mnist_random_1')
     # flip_client('data/df_mnist_random_2')
     flip_client('data/df_cifar10_random_1')
     flip_client('data/df_cifar10_random_2')
-    # flip_client('data/df_breast_2cluster_1')
-    # flip_client('data/df_breast_2cluster_2')
+    flip_client('data/df_breast_2cluster_1')
+    flip_client('data/df_breast_2cluster_2')
     flip_client('data/df_diabetes_2cluster_1')
     flip_client('data/df_diabetes_2cluster_2')
     # flip_client('data/df_mnist_2cluster_1')
     # flip_client('data/df_mnist_2cluster_2')
     flip_client('data/df_cifar10_2cluster_1')
     flip_client('data/df_cifar10_2cluster_2')
-    # flip_client('data/df_breast_cluster_1')
-    # flip_client('data/df_breast_cluster_2')
+    flip_client('data/df_breast_cluster_1')
+    flip_client('data/df_breast_cluster_2')
     flip_client('data/df_diabetes_cluster_1')
     flip_client('data/df_diabetes_cluster_2')
     # flip_client('data/df_mnist_cluster_1')
@@ -413,24 +413,24 @@ if args.n_clients < 101:
         client.to_csv(new_path + '.csv', index=False)
         print(f"Saved: {new_path}.csv of shape {client.shape}")
 
-    # inverted_client('data/df_breast_random_1')
-    # inverted_client('data/df_breast_random_2')
+    inverted_client('data/df_breast_random_1')
+    inverted_client('data/df_breast_random_2')
     inverted_client('data/df_diabetes_random_1')
     inverted_client('data/df_diabetes_random_2')
     # inverted_client('data/df_mnist_random_1')
     # inverted_client('data/df_mnist_random_2')
     inverted_client('data/df_cifar10_random_1')
     inverted_client('data/df_cifar10_random_2')
-    # inverted_client('data/df_breast_2cluster_1')
-    # inverted_client('data/df_breast_2cluster_2')
+    inverted_client('data/df_breast_2cluster_1')
+    inverted_client('data/df_breast_2cluster_2')
     inverted_client('data/df_diabetes_2cluster_1')
     inverted_client('data/df_diabetes_2cluster_2')
     # inverted_client('data/df_mnist_2cluster_1')
     # inverted_client('data/df_mnist_2cluster_2')
     inverted_client('data/df_cifar10_2cluster_1')
     inverted_client('data/df_cifar10_2cluster_2')
-    # inverted_client('data/df_breast_cluster_1')
-    # inverted_client('data/df_breast_cluster_2')
+    inverted_client('data/df_breast_cluster_1')
+    inverted_client('data/df_breast_cluster_2')
     inverted_client('data/df_diabetes_cluster_1')
     inverted_client('data/df_diabetes_cluster_2')
     # inverted_client('data/df_mnist_cluster_1')
@@ -449,24 +449,24 @@ if args.n_clients < 101:
         client.to_csv(new_path + '.csv', index=False)
         print(f"Saved: {new_path}.csv of shape {client.shape}")
 
-    # inverted_client('data/df_breast_random_1')
-    # inverted_client('data/df_breast_random_2')
+    inverted_client('data/df_breast_random_1')
+    inverted_client('data/df_breast_random_2')
     inverted_client('data/df_diabetes_random_1')
     inverted_client('data/df_diabetes_random_2')
     # inverted_client('data/df_mnist_random_1')
     # inverted_client('data/df_mnist_random_2')
     inverted_client('data/df_cifar10_random_1')
     inverted_client('data/df_cifar10_random_2')
-    # inverted_client('data/df_breast_2cluster_1')
-    # inverted_client('data/df_breast_2cluster_2')
+    inverted_client('data/df_breast_2cluster_1')
+    inverted_client('data/df_breast_2cluster_2')
     inverted_client('data/df_diabetes_2cluster_1')
     inverted_client('data/df_diabetes_2cluster_2')
     # inverted_client('data/df_mnist_2cluster_1')
     # inverted_client('data/df_mnist_2cluster_2')
     inverted_client('data/df_cifar10_2cluster_1')
     inverted_client('data/df_cifar10_2cluster_2')
-    # inverted_client('data/df_breast_cluster_1')
-    # inverted_client('data/df_breast_cluster_2')
+    inverted_client('data/df_breast_cluster_1')
+    inverted_client('data/df_breast_cluster_2')
     inverted_client('data/df_diabetes_cluster_1')
     inverted_client('data/df_diabetes_cluster_2')
     # inverted_client('data/df_mnist_cluster_1')

@@ -50,7 +50,7 @@ def main():
 
     # Use GPU if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = "mps"
+    device = "mps" if torch.backends.mps.is_available() else device
     model = model.to(device)
 
     # Step 3: Extract features
@@ -70,8 +70,8 @@ def main():
     train_features, train_tasks = extract_features(train_loader)
 
     # Step 4: Save the embeddings and labels
-    np.save('data/train_features_cifar10.npy', train_features)
-    np.save('data/train_tasks_cifar10.npy', train_tasks)
+    np.save('train_features_cifar10.npy', train_features)
+    np.save('train_tasks_cifar10.npy', train_tasks)
 
 
 if __name__ == "__main__":

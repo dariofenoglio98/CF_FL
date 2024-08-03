@@ -26,13 +26,13 @@ def colorize(image, color):
 
 # Creating the custom dataset
 class CustomMNISTDataset(torch.utils.data.Dataset):
-    def _init_(self, mnist_dataset):
+    def __init__(self, mnist_dataset):
         self.mnist_dataset = mnist_dataset
 
-    def _len_(self):
+    def __len__(self):
         return len(self.mnist_dataset)
 
-    def _getitem_(self, idx):
+    def __getitem__(self, idx):
         image, digit = self.mnist_dataset[idx]
 
         # Colorize the image

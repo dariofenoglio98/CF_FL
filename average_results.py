@@ -79,7 +79,7 @@ parser.add_argument(
 parser.add_argument(
     "--defense",
     type=str,
-    choices=["median", "ours", "krum", "trim", "bulyan", "none", ""],
+    choices=["median", "ours", "krum", "trim", "bulyan", "none", "", "rfa"],
     default="ours",
     help="Specifies the defense mechanism to be used",
 )

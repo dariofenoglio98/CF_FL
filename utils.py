@@ -24,6 +24,39 @@ from scipy.spatial.distance import cdist
 from sklearn.manifold import TSNE
 
 
+
+# Function to calculate the moving average
+def calculate_moving_average(data, window_size):
+    df = pd.DataFrame(data).T
+    df.fillna(0, inplace=True)
+    moving_averages = df.apply(lambda x: x.rolling(window=window_size, min_periods=1).mean())
+    return moving_averages
+
+def plot_moving_average(args, df_moving_avg):
+    # Reset index to have a column for 'Round'
+    df_moving_avg.reset_index(inplace=True)
+    df_moving_avg = df_moving_avg.rename(columns={'index': 'Round'})
+
+    # Melt the DataFrame for seaborn
+    df_melted_moving_avg = df_moving_avg.melt(id_vars='Round', var_name='Client', value_name='Score')
+
+    # Convert the 'Round' column to numeric
+    df_melted_moving_avg['Round'] = pd.to_numeric(df_melted_moving_avg['Round'])
+
+    # Plotting
+    plt.figure(figsize=(14, 7))
+    sns.lineplot(data=df_melted_moving_avg, x='Round', y='Score', hue='Client', marker='o')
+    plt.title('Client Scores Over Training Rounds (with Moving Average)')
+    plt.xlabel('Training Round')
+    plt.ylabel('Score')
+    plt.legend(title='Client', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True)
+    plt.tight_layout()
+
+    # Save the plot as a high-resolution image for scientific papers
+    plt.savefig(f'client_scores_plot_moving_avg_{args.dataset}_{args.fold}.png', dpi=300)
+    # plt.show()
+
 def update_and_freeze_predictor_weights(model, dataset="synthetic", data_type="random"):
     # load predictor weights
     predictor_weights = torch.load(f"checkpoints/{dataset}/predictor/{data_type}/model_best.pth")
@@ -1387,6 +1420,37 @@ def check_gpu(manual_seed=True, print_info=True):
             print("CUDA is not available")
         device = 'cpu'
     return device
+
+# # define device
+# def check_gpu(manual_seed=True, print_info=True, id=None):
+#     if manual_seed:
+#         torch.manual_seed(0)
+#     if torch.cuda.is_available():
+#         if print_info:
+#             print("CUDA is available")
+#         if id  == None:
+#             device = 'cuda:0'
+#         else:
+#             if id % 4 == 0:
+#                 device = 'cuda:0'
+#             elif id % 4 == 1:
+#                 device = 'cuda:1'
+#             elif id % 4 == 2:
+#                 device = 'cuda:2'
+#             elif id % 4 == 3:
+#                 device = 'cuda:3'
+                
+#         torch.cuda.manual_seed_all(0) 
+#     elif torch.backends.mps.is_available():
+#         if print_info:
+#             print("MPS is available")
+#         device = torch.device("mps")
+#         torch.mps.manual_seed(0)
+#     else:
+#         if print_info:
+#             print("CUDA is not available")
+#         device = 'cpu'
+#     return device
 
 def plot_mean_std_metrics(plot_metrics, name):
     # Initialize dictionaries to store the mean and std of each variable

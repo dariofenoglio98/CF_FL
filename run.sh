@@ -62,6 +62,9 @@ fi
 if [ "$defense" == "bulyan" ]; then
     python server_Bulyan.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
 fi
+if [ "$defense" == "rfa" ]; then
+    python server_RFA.py --rounds "$n_rounds" --data_type "$data_type" --model "$model" --dataset "$dataset" --pers "$pers" --n_clients "$n_clients" --n_attackers "$n_attackers" --attack_type "$attack_type" --fold $fold  &
+fi
 sleep 2  # Sleep for 2s to give the server enough time to start
 
 for i in $(seq 1 $n_clients); do
