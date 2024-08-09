@@ -222,6 +222,7 @@ if args.n_clients < 101:
             i += 1
         
         # concatenate the test split of each part
+        # df_test = pd.concat(test_splits[:-1]) # to remove the last client from the validation set on the server
         df_test = pd.concat(test_splits)
         df_test.to_csv(file_prefix + '_2cluster_test.csv', index=False)
         print(f'Saved: {file_prefix}_2cluster_test.csv of shape {df_test.shape}\n')
@@ -322,7 +323,7 @@ if args.n_clients < 101:
     # example for both datasets 
     df_diabetes = pd.read_csv('data/df_diabetes_random_1.csv')
     df_breast = pd.read_csv('data/df_breast_random_1.csv')
-    # df_mnist = pd.read_csv('data/df_mnist_random_1.csv')
+    df_mnist = pd.read_csv('data/df_mnist_random_1.csv')
     df_cifar10 = pd.read_csv('data/df_cifar10_random_1.csv')
 
     def create_attackers_random(df, N_attackers, min, max, file_prefix='df_diabetes_random', seed=1):

@@ -108,7 +108,6 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         self.device = utils.check_gpu(manual_seed=True)
         self.args_main = args_main
 
-
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
         print(f"Original Size Server-Test Set: {self.X_test.shape}")
@@ -205,11 +204,11 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
 
         # Aggregate metrics
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        # CHOOSE THE SCORE - MIX (CF+ERROR), ERROR, CF
         # score = utils.normalize(w_dist)  # counterfactual score
         # score = utils.normalize(w_error) # error score
         score = utils.normalize(w_mix)
         
-    
         # update client memory
         self.client_memory[server_round] = {}
         for n, cid in enumerate(client_cid):
@@ -218,14 +217,13 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             else:
                 self.client_memory[server_round][cid] = score[n]
         
-        # save client memory
+        # SAVE CLIENT MEMORY FOR CLIENT-SCORE-BEHAVIOUR PLOT
         with open(f"client_memory_round_{self.args_main.dataset}_{self.args_main.fold}.json", 'w') as f:
             json.dump(self.client_memory, f)
                     
         # calculate moving average
         moving_averages = self.calculate_moving_average(client_cid)
         print(f"Moving averages: {moving_averages}")
-
 
         # Aggregations
         if not results:
@@ -339,6 +337,7 @@ def main() -> None:
         help="Specifies the window size for moving average",
     )
     args = parser.parse_args()
+    print("\n\033[1;32m------- Federated Behavioural Shields (FBSs) -------\033[0m\n")
 
 
     if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}"):

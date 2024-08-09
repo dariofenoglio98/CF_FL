@@ -1,8 +1,12 @@
 """
-This code creates a custom strategy for the Flower server. The strategy is based on the Median aggregation rule.
-When it starts, the server waits for the clients to connect. When the established number of clients is reached,
-the server aggregates the models using the Median aggregation rule. The aggregated model is then sent to the clients
-for the next round of training. The server saves the model and metrics after each round.
+This code implements the FedAvg, empowered with our Federated Behavioural Planes for visualizing the client's behaviour.
+When it starts, the server waits for the clients to connect. When the established number of clients is reached, the 
+learning process starts. The server sends the model to the clients, and the clients train the model locally. After training,
+the clients send the updated model back to the server. The server evaluate the client models on the clean validation set
+to create the Federated Behavioural Planes (Error and Counterfactual). The planes are saved in in the folder
+"images/{dataset}/{model}/gifs/{data_type}/". Error Behavioural Plane is in the folder "error_traj", and Counterfactual 
+Behavioural Plane in folder "cf_traj". Then client models are aggregated with FedAvg. The aggregated model is then sent
+to the clients for the next round of training. The server saves the model and metrics after each round.
 
 This is code is set to be used locally, but it can be used in a distributed environment by changing the server_address.
 In a distributed environment, the server_address should be the IP address of the server, and each client machine should 
@@ -13,12 +17,8 @@ run the appopriate client code (client.py).
 import flwr as fl
 import numpy as np
 from typing import List, Tuple, Union, Optional, Dict
+from flwr.common import Parameters, Scalar, Metrics
 from flwr.server.client_proxy import ClientProxy
-from logging import WARNING
-from typing import Callable, Dict, List, Optional, Tuple, Union
-from flwr.common.logger import log
-from flwr.server.strategy.aggregate import aggregate_median
-from flwr.server.strategy.fedavg import FedAvg
 from flwr.common import FitRes
 import argparse
 import torch
@@ -27,16 +27,7 @@ import os
 from collections import OrderedDict
 import json
 import time
-from flwr.common import (
-    FitRes,
-    Metrics,
-    MetricsAggregationFn,
-    NDArrays,
-    Parameters,
-    Scalar,
-    ndarrays_to_parameters,
-    parameters_to_ndarrays,
-)
+import pandas as pd
 
 
 # Config_client
@@ -58,51 +49,10 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     # Aggregate and return custom metric (weighted average)
     return {"accuracy": sum(accuracies) / sum(examples), "validity": sum(validities) / sum(examples)}
 
-# Custom weighted average function
-class FedMedian(FedAvg):
-    """Configurable FedMedian strategy implementation."""
-    # pylint: disable=too-many-arguments,too-many-instance-attributes, line-too-long
-    def __init__(
-        self,
-        *,
-        fraction_fit: float = 1.0,
-        fraction_evaluate: float = 1.0,
-        min_fit_clients: int = 2,
-        min_evaluate_clients: int = 2,
-        min_available_clients: int = 2,
-        evaluate_fn: Optional[
-            Callable[
-                [int, NDArrays, Dict[str, Scalar]],
-                Optional[Tuple[float, Dict[str, Scalar]]],
-            ]
-        ] = None,
-        on_fit_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
-        on_evaluate_config_fn: Optional[Callable[[int], Dict[str, Scalar]]] = None,
-        accept_failures: bool = True,
-        initial_parameters: Optional[Parameters] = None,
-        fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        model=None,
-        data_type: str = "random", # "random", "cluster", "2cluster"
-        checkpoint_folder: str = "checkpoints/",
-        dataset: str = "diabetes",
-        fold: int = 0,
-        model_config: dict = {},
-    ) -> None:
-        super().__init__(
-            fraction_fit=fraction_fit,
-            fraction_evaluate=fraction_evaluate,
-            min_fit_clients=min_fit_clients,
-            min_evaluate_clients=min_evaluate_clients,
-            min_available_clients=min_available_clients,
-            evaluate_fn=evaluate_fn,
-            on_fit_config_fn=on_fit_config_fn,
-            on_evaluate_config_fn=on_evaluate_config_fn,
-            accept_failures=accept_failures,
-            initial_parameters=initial_parameters,
-            fit_metrics_aggregation_fn=fit_metrics_aggregation_fn,
-            evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
-        )
+# Custom strategy to save model after each round
+class SaveModelStrategy(fl.server.strategy.FedAvg):
+    def __init__(self, model, data_type, checkpoint_folder, dataset, fold, model_config, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.model = model
         self.data_type = data_type
         self.checkpoint_folder = checkpoint_folder
@@ -112,46 +62,71 @@ class FedMedian(FedAvg):
 
         # read data for testing
         self.X_test, self.y_test = utils.load_data_test(data_type=self.data_type, dataset=self.dataset)
+
+        if self.dataset == 'diabetes':
+            # randomly pick N samples <= 10605
+            idx = np.random.choice(len(self.X_test), 300, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx]
+        elif self.dataset == 'breast':
+            # randomly pick N samples <= 89
+            idx = np.random.choice(len(self.X_test), 88, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx] 
+        elif self.dataset == 'synthetic':
+            # randomly pick N samples <= 938
+            idx = np.random.choice(len(self.X_test), 300, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx]
+        elif self.dataset == 'mnist':
+            # randomly pick N samples <= 938
+            idx = np.random.choice(len(self.X_test), 300, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx] 
+        elif self.dataset == 'cifar10':
+            # randomly pick N samples <= 938
+            idx = np.random.choice(len(self.X_test), 280, replace=False)
+            self.X_test = self.X_test[idx]
+            self.y_test = self.y_test[idx]      
+        
+        print(f"Used Size Server-Test Set: {self.X_test.shape}")
+
         # create folder if not exists
         if not os.path.exists(self.checkpoint_folder + f"{self.data_type}"):
             os.makedirs(self.checkpoint_folder + f"{self.data_type}")
 
-    def __repr__(self) -> str:
-        """Compute a string representation of the strategy."""
-        rep = f"FedMedian(accept_failures={self.accept_failures})"
-        return rep
-
+    # Override aggregate_fit method to add saving functionality
     def aggregate_fit(
         self,
         server_round: int,
-        results: List[Tuple[ClientProxy, FitRes]],
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate fit results using median."""
-        if not results:
-            return None, {}
-        # Do not aggregate if there are failures and failures are not accepted
-        if not self.accept_failures and failures:
-            return None, {}
+        """Aggregate model weights using weighted average and store checkpoint"""
 
-        # Convert results
-        weights_results = [
-            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
-        ]
-        aggregated_parameters = ndarrays_to_parameters(
-            aggregate_median(weights_results)
-        )
+        # Perform evaluation on the server side on each single client after local training for each clients evaluate the model
+        client_data = {}
+        for client, fit_res in results:
+            # Load model
+            params = fl.common.parameters_to_ndarrays(fit_res.parameters)
+            params_dict = zip(self.model.state_dict().keys(), params)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            cid = int(np.round(state_dict['cid'].item()))
+            self.model.load_state_dict(state_dict, strict=True)
+            # Evaluate the model
+            try:
+                client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+                client_data[cid] = client_metrics
+            except Exception as e:
+                print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero metrics") 
 
-        # Aggregate custom metrics if aggregation fn was provided
-        metrics_aggregated = {}
-        if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
-        elif server_round == 1:  # Only log this warning once
-            log(WARNING, "No fit_metrics_aggregation_fn provided")
+        # Planes construction
+        utils.creation_planes_FBPs(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        
+        # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
+        aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
 
-        # Save the model after each round
+        # Save model
         if aggregated_parameters is not None:
 
             print(f"Saving round {server_round} aggregated_parameters...")
@@ -164,11 +139,7 @@ class FedMedian(FedAvg):
             # Save the model
             torch.save(self.model.state_dict(), self.checkpoint_folder + f"{self.data_type}/model_round_{server_round}.pth")
         
-        return aggregated_parameters, metrics_aggregated
-
-
-
-
+        return aggregated_parameters, aggregated_metrics
 
 
 
@@ -238,8 +209,8 @@ def main() -> None:
         help="Specifies the current fold of the cross-validation, if 0 no cross-validation is used",
     )
     args = parser.parse_args()
-    print("\n\033[1;32m------- Median -------\033[0m\n")
-
+    print("sticazzi")
+    print("\n\033[1;32m------- Federated Behavioural Planes (FBPs) -------\033[0m\n")
 
     if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}"):
         os.makedirs(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}")
@@ -253,7 +224,7 @@ def main() -> None:
     config = utils.config_tests[args.dataset][args.model]
 
     # Define strategy
-    strategy = FedMedian(
+    strategy = SaveModelStrategy(
         model=model(config=config), # model to be trained
         min_fit_clients=args.n_clients+args.n_attackers, # Never sample less than 10 clients for training
         min_evaluate_clients=args.n_clients+args.n_attackers,  # Never sample less than 5 clients for evaluation
@@ -269,7 +240,7 @@ def main() -> None:
         fold=args.fold,
         model_config=config,
     )
-    
+
     # Start time
     start_time = time.time()
 
@@ -295,16 +266,20 @@ def main() -> None:
     # # check if folder exists and save metrics
     if not os.path.exists(config['history_folder'] + f"server_{args.data_type}"):
         os.makedirs(config['history_folder'] + f"server_{args.data_type}")
-    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}_{args.attack_type}_{args.n_attackers}_median_{args.fold}.json', 'w') as f:
+    with open(config['history_folder'] + f'server_{args.data_type}/metrics_{args.rounds}_{args.attack_type}_{args.n_attackers}_none_{args.fold}.json', 'w') as f:
         json.dump({'loss': loss, 'accuracy': accuracy, 'validity':validity}, f)
- 
-    # Plot
+
+    # Single Plot
     best_loss_round, best_acc_round = utils.plot_loss_and_accuracy(args, loss, accuracy, validity, config=config, show=False)
 
     # Evaluate the model on the test set
     if args.model == 'predictor':
         y_test_pred, accuracy = utils.evaluation_central_test_predictor(args, best_model_round=best_loss_round, config=config)
         print(f"Accuracy on test set: {accuracy}")
+        df_excel = {}
+        df_excel['accuracy'] = [accuracy]
+        df_excel = pd.DataFrame(df_excel)
+        df_excel.to_excel(f"results_fold_{args.fold}.xlsx")
     else:
         utils.evaluation_central_test(args, best_model_round=best_loss_round, model=model, config=config)
         
@@ -326,7 +301,9 @@ def main() -> None:
 
         # Print training time in minutes (grey color)
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
-
+    
+    # Create gif
+    # utils.create_gif(args, config)
 
 if __name__ == "__main__":
     main()

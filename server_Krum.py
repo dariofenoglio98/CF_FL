@@ -286,6 +286,7 @@ def main() -> None:
         help="Specifies the current fold of the cross-validation, if 0 no cross-validation is used",
     )
     args = parser.parse_args()
+    print("\n\033[1;32m------- Krum -------\033[0m\n")
 
 
     if not os.path.exists(f"results/{args.model}/{args.dataset}/{args.data_type}/{args.fold}"):
