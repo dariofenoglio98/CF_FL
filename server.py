@@ -301,9 +301,7 @@ def main() -> None:
 
         # Print training time in minutes (grey color)
         print(f"\033[90mPersonalization time: {round((time.time() - start_time)/60, 2)} minutes\033[0m")
-    
-    # Create gif
-    # utils.create_gif(args, config)
+        
 
 if __name__ == "__main__":
     main()

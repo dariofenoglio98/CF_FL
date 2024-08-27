@@ -25,7 +25,7 @@
 model="net" # Options: "net"=our model for cf+predictor, "vcnet"=model for cf+predictor, "predictor"
 data_type="2cluster"  # Options: "2cluster", "random", "cluster" is an old version of 2cluster
 n_epochs=10 # number of epochs for centralized training 
-n_rounds=200 # number of rounds for federated learning - local epochs can be set directly on the server code
+n_rounds=20 # number of rounds for federated learning - local epochs can be set directly on the server code
 dataset="cifar10" # Options: "diabetes", "breast", "synthetic",'mnist', 'cifar10'
 n_clients=5 # number of clients, due to dataset dimension the number of clients must < 8 for real datasets, while diabetes can handle 20 clients
 n_attackers=1  # Adjust this as needed for testing attackers - our setting was 5 clients and 1 attacker for the real datasets, and 10 clients and 2 attackers for synthetic
