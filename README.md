@@ -6,10 +6,10 @@ However, enabling human trust and control over FL systems requires understanding
 To address this challenge, we introduce \emph{Federated Behavioural Planes} (FBPs), a novel method to analyse, visualise, and explain the dynamics of FL systems, showing how clients behave under two different lenses: predictive performance (error behavioural space) and decision-making processes (counterfactual behavioural space). 
 Our experiments demonstrate that FBPs provide informative trajectories describing the evolving states of clients and their contributions to the global model, thereby enabling the identification of clusters of clients with similar behaviours. Leveraging the patterns identified by FBPs, we propose a robust aggregation technique named \emph{Federated Behavioural Shields} to detect malicious or noisy client models, thereby enhancing security and surpassing the efficacy of existing state-of-the-art FL defense mechanisms.
 
+![Federated Behavioural Planes](images_readme/abstract_figure.png)
 
 ## Datasets
-The four datasets we used are freely available on the web with licenses: Breast Cancer Wisconsin (CC BY-NC-SA 4.0 license), Diabetes Health Indicators (CC0 licence), MNIST (GNU license), and CIFAR10 (MIT license). In addition, we designed a Synthetic dataset to have full control on clients’ data distributions, and thus test our assumptions. Data processing is managed by `/data/client_split.py`, which
-allows to select the seed used for the splitting process and the number of clients to create. 
+The four datasets we used are freely available on the web with licenses: Breast Cancer Wisconsin (CC BY-NC-SA 4.0 license), Diabetes Health Indicators (CC0 licence), MNIST (GNU license), and CIFAR10 (MIT license). In addition, we designed a Synthetic dataset to have full control on clients’ data distributions, and thus test our assumptions. Data processing is managed by `/data/client_split.py`, which allows to select the seed used for the splitting process and the number of clients to create. 
 
 For the NeurIPS review, we loaded all datasets except MNIST which exceeded the memory limit.
 
