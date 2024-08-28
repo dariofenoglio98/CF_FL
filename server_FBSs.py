@@ -333,7 +333,7 @@ def main() -> None:
     parser.add_argument(
         "--window_size",
         type=int,
-        default=10,
+        default=30,
         help="Specifies the window size for moving average",
     )
     args = parser.parse_args()

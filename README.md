@@ -8,8 +8,7 @@ Our experiments demonstrate that FBPs provide informative trajectories describin
 
 
 ## Datasets
-The three datasets we used are freely available on the web with licenses: Breast Cancer Wisconsin (CC BY-NC-SA 4.0 license), Diabetes Health Indicators (CC0 licence), and MNIST (GNU license).
-In addition, we designed a Synthetic dataset to have full control on clients’ data distributions, and thus test our assumptions. Data processing is managed by `/data/client_split.py`, which
+The four datasets we used are freely available on the web with licenses: Breast Cancer Wisconsin (CC BY-NC-SA 4.0 license), Diabetes Health Indicators (CC0 licence), MNIST (GNU license), and CIFAR10 (MIT license). In addition, we designed a Synthetic dataset to have full control on clients’ data distributions, and thus test our assumptions. Data processing is managed by `/data/client_split.py`, which
 allows to select the seed used for the splitting process and the number of clients to create. 
 
 For the NeurIPS review, we loaded all datasets except MNIST which exceeded the memory limit.
@@ -27,18 +26,19 @@ Before running the federated training, ensure to have the following libraries:
 ## Installation 
 Clone this repository to your local machine:
 ```
-git clone ...
-cd ...
+git clone git@github.com:dariofenoglio98/CF_FL.git
+cd CF_FL
 ```
 Install the required Python packages:
 ```
 pip install -r requirements.txt
 ```
 
+
 ## Components Centralized Learning (Privacy-intrusive)
 ### `privacy_intrusive_CL.py`
 This code performs centralized learning (privacy-intrusive setting), where a model is trained on the data of all clients. Therefore, all  client datasets are unified into a single dataset. The model is then evaluated on the test set.
-- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist'. Default is 'diabetes'
+- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist', 'cifar10'. Default is 'diabetes'
 - `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
 - `--n_epochs`: Specifies the number of training epochs. Default is set to 20.
 - `--model`: Specifies the model to be trained. Choices: 'net', 'vcnet', 'predictor'. Default is 'net' (ours counterfactual generator + predictor).
@@ -50,21 +50,34 @@ This code performs centralized learning (privacy-intrusive setting), where a mod
 ## Components Local Centralized Learning
 ### `centralized_learning.py`
 This code performs the Local Centralized Learning, which locally trains a model for each client in the selected dataset. For each client, a xlsx file is created with the metrics of the model and the fold.
-- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist'. Default is 'diabetes'
+- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist', 'cifar10'. Default is 'diabetes'
 - `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
 - `--n_epochs`: Specifies the number of training epochs. Default is set to 20.
 - `--model`: Specifies the model to be trained. Choices: 'net', 'vcnet', 'predictor'. Default is 'net' (ours counterfactual generator + predictor).
 - `--fold`: Specifies the current fold of the cross-validation, if 0 no cross-validation is used. Choices range from 0 to 19. Default is 0.
 - `--n_clients`: Specifies the number of clients to be used for training and evaluation. Default is 3.
+- `--glob_pred`: Specifies if global predictor is used (1:True) or not (0:False).
 
 
 
 ## Components Federated Learning
 
 ### `server.py` 
+This script initializes a server facilitating client connections for federated learning. It implements the traditional FedAvg.
+- `--rounds`: Specifies the number of training rounds. Default is set to 20.
+- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist', 'cifar10'. Default is 'diabetes'
+- `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
+- `--model`: Specifies the model to be trained. Choices: 'net', 'vcnet', 'predictor'. Default is 'net' (ours counterfactual generator + predictor).
+- `--pers`: Specifies if client-adaptation is used (1) or not (0). Choices: 0, 1. Default is 0.
+- `--n_clients`: Specifies the number of clients to be used for training and evaluation. Default is 3.
+- `--n_attackers`: Specifies the number of attackers in the training set, not considered for client-evaluation. Default is 0.
+- `--attack_type`: Specifies the attack type to be used. Choices: ''=no attack, 'MP_noise'=crafted-noise, 'MP_gradient'='inverted-gradient', 'DP_flip'=label-flipping, 'DP_inverted_loss'=inverted-loss,Default is ''.
+- `--fold`: Specifies the current fold of the cross-validation, if 0 no cross-validation is used. Choices range from 0 to 19. Default is 0.
+
+### `server_FBPs.py` 
 This script initializes a server facilitating client connections for federated learning. It implements the FedAvg, empowered with our Federated Behavioural Planes to visualize client behaviours. Planes are saved in "images/{dataset}/{model}/gifs/{data_type}/". Error Behavioural Plane is in the folder "error_traj", and Counterfactual Behavioural Plane in folder "cf_traj".
 - `--rounds`: Specifies the number of training rounds. Default is set to 20.
-- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist'. Default is 'diabetes'
+- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist', 'cifar10'. Default is 'diabetes'
 - `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
 - `--model`: Specifies the model to be trained. Choices: 'net', 'vcnet', 'predictor'. Default is 'net' (ours counterfactual generator + predictor).
 - `--pers`: Specifies if client-adaptation is used (1) or not (0). Choices: 0, 1. Default is 0.
@@ -73,11 +86,10 @@ This script initializes a server facilitating client connections for federated l
 - `--attack_type`: Specifies the attack type to be used. Choices: ''=no attack, 'MP_noise'=crafted-noise, 'MP_gradient'='inverted-gradient', 'DP_flip'=label-flipping, 'DP_inverted_loss'=inverted-loss,Default is ''.
 - `--fold`: Specifies the current fold of the cross-validation, if 0 no cross-validation is used. Choices range from 0 to 19. Default is 0.
 
-
-### `server_Ours.py` 
-This script initializes a server facilitating client connections for federated learning. It implements Federated Behavioural Shields, a new class of robust aggregation mechanisms to enhance security in FL. The strategy is based on the information extracted from the Federated Behavioural Planes (Error and Counterfactuls).
+### `server_FBSs.py` 
+This script initializes a server facilitating client connections for federated learning. It implements the our Federated Behavioural Shields, a robust defense mechanims. 
 - `--rounds`: Specifies the number of training rounds. Default is set to 20.
-- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist'. Default is 'diabetes'
+- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist', 'cifar10'. Default is 'diabetes'
 - `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
 - `--model`: Specifies the model to be trained. Choices: 'net', 'vcnet', 'predictor'. Default is 'net' (ours counterfactual generator + predictor).
 - `--pers`: Specifies if client-adaptation is used (1) or not (0). Choices: 0, 1. Default is 0.
@@ -85,11 +97,10 @@ This script initializes a server facilitating client connections for federated l
 - `--n_attackers`: Specifies the number of attackers in the training set, not considered for client-evaluation. Default is 0.
 - `--attack_type`: Specifies the attack type to be used. Choices: ''=no attack, 'MP_noise'=crafted-noise, 'MP_gradient'='inverted-gradient', 'DP_flip'=label-flipping, 'DP_inverted_loss'=inverted-loss,Default is ''.
 - `--fold`: Specifies the current fold of the cross-validation, if 0 no cross-validation is used. Choices range from 0 to 19. Default is 0.
-- `--window_size`: Specifies the window size for moving average. Default is 10.
-
+- `--window_size`: Specifies the window size for moving average, considering client history. Default is 30. 
 
 ### `server_Baseline.py` 
-This script initializes a server facilitating client connections for federated learning. It implements the robust aggregation baselines, such as Krum, Median, Trimmed-mean. 
+This script initializes a server facilitating client connections for federated learning. It implements the robust aggregation baselines, such as Krum, Median, Trimmed-mean, RFA. 
 - `--rounds`: Specifies the number of training rounds. Default is set to 20.
 - `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist'. Default is 'diabetes'
 - `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
@@ -100,9 +111,15 @@ This script initializes a server facilitating client connections for federated l
 - `--attack_type`: Specifies the attack type to be used. Choices: ''=no attack, 'MP_noise'=crafted-noise, 'MP_gradient'='inverted-gradient', 'DP_flip'=label-flipping, 'DP_inverted_loss'=inverted-loss,Default is ''.
 - `--fold`: Specifies the current fold of the cross-validation, if 0 no cross-validation is used. Choices range from 0 to 19. Default is 0.
 
-
-### `Client.py`
+### `client.py`
 This script is responsible for creating a generic client. Each client is linked to a respective portion of the dataset. When started, it connects to the server. Essential is to use the IP address of the server. More information on introduction of the code.
+- `--id`: Indicates the artificial data partition assigned to the client.
+- `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist'. Default is 'diabetes'
+- `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
+- `--model`: Specifies the model to be trained. Choices: 'net', 'vcnet', 'predictor'. Default is 'net' (ours counterfactual generator + predictor). It needs to be the same as in `Server.py`.
+
+### `malicious_client.py`
+This script sets up a malicious client to execute Data Poisoning (DP) or Model Poisoning (MP) attacks. For DP attacks, the client uses a specific subset of a poisoned dataset. For Model Poisoning attacks, the client may either manipulate the model parameters directly (Crafted-noise) or utilize a regular client dataset while inverting gradients When started, it connects to the server. Essential is to use the IP address of the server. More information on introduction of the code.
 - `--id`: Indicates the artificial data partition assigned to the client.
 - `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist'. Default is 'diabetes'
 - `--data_type`: Specifies the type of data partition. Choices: 'random'=IID, '2cluster'=non-IID, 'cluster'=old non-IID version. Default is 'random'.
@@ -127,7 +144,7 @@ This script is responsible for creating a generic client. Each client is linked 
       python client.py --id 2 --(define all parameters)
       python client.py --id 3 --(define all parameters)
       ```
-      Repeat as necessary for additional clients. Remember to set in `Server.py` the specifications for the federated learning (e.g., min_available_clients)
+      Repeat as necessary for additional clients. Remember to set in `server.py` the specifications for the federated learning (e.g., min_available_clients)
 
 
 
