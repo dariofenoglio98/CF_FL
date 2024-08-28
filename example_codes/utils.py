@@ -2584,8 +2584,8 @@ def create_image_with_trajectories_absolute(data, path, name, n_attackers=0, rou
         plt.ylabel('2nd principal component')
         i_tmp = i + 1   
         plt.title(title)
-        print('Saving image to:')
-        print(os.path.join(path, f'{name}/iteration_{i_tmp}.png'))
+        # print('Saving image to:')
+        # print(os.path.join(path, f'{name}/iteration_{i_tmp}.png'))
         plt.savefig(os.path.join(path, f'{name}/iteration_{i_tmp}.pdf'), bbox_inches='tight')
         plt.close()
 
@@ -2687,8 +2687,8 @@ def create_image_with_trajectories_relative(data, path, name, n_attackers=0, rou
         plt.ylabel('2nd principal component')
         i_tmp = i + 1   
         plt.title(title)
-        print('Saving image to:')
-        print(os.path.join(path, f'{name}/iteration_{i_tmp}.png'))
+        # print('Saving image to:')
+        # print(os.path.join(path, f'{name}/iteration_{i_tmp}.png'))
         plt.savefig(os.path.join(path, f'{name}/iteration_{i_tmp}.pdf'), bbox_inches='tight')
         plt.close()
 

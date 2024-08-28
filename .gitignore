@@ -13,3 +13,10 @@ results_cross_val_old/
 results_cross_val_paper/
 NeurIPs/
 score_trends/
+example_codes/images/
+example_codes/results/
+example_codes/histories/
+example_codes/checkpoints/
+example_codes/__pycache__/
+example_codes/data/*.csv
+example_codes/data/*.npy

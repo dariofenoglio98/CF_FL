@@ -78,6 +78,8 @@ def main():
 
     # Use GPU if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "mps" if torch.backends.mps.is_available() else device
+    print(f"Using device: {device}")
     model = model.to(device)
 
     # Step 3: Extract features
