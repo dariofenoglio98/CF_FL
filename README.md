@@ -26,7 +26,7 @@ Before running the federated training, ensure to have the following libraries:
 ## Installation 
 Clone this repository to your local machine:
 ```
-git clone git@github.com:dariofenoglio98/CF_FL.git
+git clone https://github.com/dariofenoglio98/CF_FL.git
 cd CF_FL
 ```
 Install conda environment:
