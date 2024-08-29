@@ -38,13 +38,13 @@ or manually install the required Python packages (may be missing some):
 pip install -r requirements.txt
 ```
 
-## Tutorial - Example Codes
+## 🟢 Tutorial - Example Codes
 The `example_codes` directory contains two Jupyter notebooks designed to help you get started with our proposed Federated Behavioural Planes (FBPs) by visualizing client trajectories during the training process.
 - `one_machine_FL.ipynb`: This notebook demonstrates the setup of a federated learning environment on a single machine using localhost. It includes the implementation of a server, honest clients, and malicious clients.
 - `multiple_machines_FL.ipynb`: This notebook is designed for distributed environments where each component (i.e., server, honest client, malicious client) runs on separate machines. A minimum of three machines is required: one for the server and two for the clients.
 
 
-## Components Centralized Learning (Privacy-intrusive)
+## 🔵 Components Centralized Learning (Privacy-intrusive)
 ### `privacy_intrusive_CL.py`
 This code performs centralized learning (privacy-intrusive setting), where a model is trained on the data of all clients. Therefore, all  client datasets are unified into a single dataset. The model is then evaluated on the test set.
 - `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist', 'cifar10'. Default is 'diabetes'
@@ -56,7 +56,7 @@ This code performs centralized learning (privacy-intrusive setting), where a mod
 
 
 
-## Components Local Centralized Learning
+## 🔵 Components Local Centralized Learning
 ### `centralized_learning.py`
 This code performs the Local Centralized Learning, which locally trains a model for each client in the selected dataset. For each client, a xlsx file is created with the metrics of the model and the fold.
 - `--dataset`: Specifies the dataset to be used. Choices: 'diabetes', 'breast', 'synthetic', 'mnist', 'cifar10'. Default is 'diabetes'
@@ -69,7 +69,7 @@ This code performs the Local Centralized Learning, which locally trains a model 
 
 
 
-## Components Federated Learning
+## 🔵 Components Federated Learning
 
 ### `server.py` 
 This script initializes a server facilitating client connections for federated learning. It implements the traditional FedAvg.
@@ -135,7 +135,7 @@ This script sets up a malicious client to execute Data Poisoning (DP) or Model P
 - `--model`: Specifies the model to be trained. Choices: 'net', 'vcnet', 'predictor'. Default is 'net' (ours counterfactual generator + predictor). It needs to be the same as in `Server.py`.
 
 
-## How to Run Experiments
+## 🟡 How to Run Experiments
 1. **`cross_validation.sh`**: This script automates the entire process in one machine, including the server and client code execution. It is used to perform the cross-validation for different learning strategies (Local CL, CL, FL), attacks, defenses, and datasets. It initializes the data, and then starts the training process. After each fold, the metrics are printed in the terminal, and the results are saved in a temporary xlsx file, named results_fold_N.xlsx, where N is the fold number. At the end of the validation, all these xlsx files are averaged and saved in the folder "results_cross_val" (both mean and std). It can be run through `bash` command. All the parameters are described inside the code. 
 
 2. Alternatively, you can manually start the server and clients across different machines using the following commands:
