@@ -29,10 +29,19 @@ Clone this repository to your local machine:
 git clone git@github.com:dariofenoglio98/CF_FL.git
 cd CF_FL
 ```
-Install the required Python packages:
+Install conda environment:
+```
+conda env create -f environment.yml
+```
+or manually install the required Python packages (may be missing some):
 ```
 pip install -r requirements.txt
 ```
+
+## Tutorial - Example Codes
+The `example_codes` directory contains two Jupyter notebooks designed to help you get started with our proposed Federated Behavioural Planes (FBPs) by visualizing client trajectories during the training process.
+- `one_machine_FL.ipynb`: This notebook demonstrates the setup of a federated learning environment on a single machine using localhost. It includes the implementation of a server, honest clients, and malicious clients.
+- `multiple_machines_FL.ipynb`: This notebook is designed for distributed environments where each component (i.e., server, honest client, malicious client) runs on separate machines. A minimum of three machines is required: one for the server and two for the clients.
 
 
 ## Components Centralized Learning (Privacy-intrusive)

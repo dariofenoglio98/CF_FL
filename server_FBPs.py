@@ -120,12 +120,32 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
             except Exception as e:
                 print(f"An error occurred during server-side evaluation of client {cid}: {e}, returning zero metrics") 
 
-        # Planes construction
-        utils.creation_planes_FBPs(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        # Original code -----
+        # # Planes construction
+        # utils.creation_planes_FBPs(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
         
+        # # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
+        # aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
+        # -------------------
+        
+        # New one -----
         # Call aggregate_fit from base class (FedAvg) to aggregate parameters and metrics
         aggregated_parameters, aggregated_metrics = super().aggregate_fit(server_round, results, failures) # aggregated_metrics from aggregate_fit is empty except if i pass fit_metrics_aggregation_fn
 
+        # evaluate aggregated model
+        params = fl.common.parameters_to_ndarrays(aggregated_parameters)
+        params_dict = zip(self.model.state_dict().keys(), params)
+        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        cid = int(1001)
+        self.model.load_state_dict(state_dict, strict=True)
+        client_metrics = utils.server_side_evaluation(self.X_test, self.y_test, model=self.model, config=self.model_config)
+        client_data[cid] = client_metrics
+
+        # Planes construction
+        utils.creation_planes_FBPs(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
+        # -------------------
+        
+        
         # Save model
         if aggregated_parameters is not None:
 

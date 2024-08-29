@@ -1092,7 +1092,7 @@ def creation_planes_FBPs(client_data, server_round, data_type, dataset, config, 
             common_changes.append(client_data[client]['common_changes'].unsqueeze(0))
             counterfactuals.append(client_data[client]['counterfactuals'].unsqueeze(0))
             samples.append(client_data[client]['dataset'].unsqueeze(0))
-
+        
         errors = torch.cat(errors, dim=0)
         common_changes = torch.cat(common_changes, dim=0)
         counterfactuals = torch.cat(counterfactuals, dim=0)

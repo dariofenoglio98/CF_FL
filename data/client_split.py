@@ -599,6 +599,7 @@ if args.synthetic_features == 2:
         df = np.concatenate((data_dict[key]['x'], data_dict[key]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
         df.to_csv('data/df_synthetic_random_{}.csv'.format(key+1), index=False)
+        print(f'Saved: df_synthetic_random_{key+1}.csv of shape {df.shape}')
     # save test
     list_df = []
     for key in data_dict_test:
@@ -607,11 +608,13 @@ if args.synthetic_features == 2:
         list_df.append(df)
     df = pd.concat(list_df)
     df.to_csv('data/df_synthetic_random_test.csv', index=False)
+    print(f'Saved: df_synthetic_random_test.csv of shape {df.shape}')
     # save single datasets for testing
     for key in data_dict_test:
         df = np.concatenate((data_dict_test[key]['x'], data_dict_test[key]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
         df.to_csv('data/df_synthetic_random_test_{}.csv'.format(key+1), index=False)
+        print(f'Saved: df_synthetic_random_test_{key+1}.csv of shape {df.shape}')
         
     ## Poisoning attack
     # random data
@@ -658,6 +661,7 @@ if args.synthetic_features == 2:
         df = np.concatenate((poisoned_data[i]['x'], poisoned_data[i]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'Labels'])
         df.to_csv('data/df_synthetic_random_{}.csv'.format(list_name[i]), index=False)
+        print(f'Saved: df_synthetic_random_{list_name[i]}.csv of shape {df.shape}')
 else:
     data_dict = divide_space(data, int(N_clients/2))
     data_dict_test = divide_space(data_test, int(N_clients/2))
@@ -668,10 +672,12 @@ else:
         df = np.concatenate((data_dict[key]['x'], data_dict[key]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
         df.to_csv('data/df_synthetic_random_{}.csv'.format(key+1), index=False)
+        print(f'Saved: df_synthetic_random_{key+1}.csv of shape {df.shape}')
     for key in data_dict_2:
         df = np.concatenate((data_dict_2[key]['x'], data_dict_2[key]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
         df.to_csv('data/df_synthetic_random_{}.csv'.format(key+1), index=False)
+        print(f'Saved: df_synthetic_random_{key+1}.csv of shape {df.shape}')
     # save test
     list_df = []
     for key in data_dict_test:
@@ -684,16 +690,19 @@ else:
         list_df.append(df)
     df = pd.concat(list_df)
     df.to_csv('data/df_synthetic_random_test.csv', index=False)
+    print(f'Saved: df_synthetic_random_test.csv of shape {df.shape}')
     # save single datasets for testing
     for key in data_dict_test:
         df = np.concatenate((data_dict_test[key]['x'], data_dict_test[key]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
         df.to_csv('data/df_synthetic_random_test_{}.csv'.format(key+1), index=False)
+        print(f'Saved: df_synthetic_random_test_{key+1}.csv of shape {df.shape}')
 
     for key in data_dict_test_2:
         df = np.concatenate((data_dict_test_2[key]['x'], data_dict_test_2[key]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
         df.to_csv('data/df_synthetic_random_test_{}.csv'.format(key+1), index=False)
+        print(f'Saved: df_synthetic_random_test_{key+1}.csv of shape {df.shape}')
 
     ## Poisoning attack
     # random data
@@ -757,6 +766,7 @@ else:
         df = np.concatenate((poisoned_data[i]['x'], poisoned_data[i]['y'].reshape(-1, 1)), axis=1)
         df = pd.DataFrame(df, columns=['x1', 'x2', 'x3', 'Labels'])
         df.to_csv('data/df_synthetic_random_{}.csv'.format(list_name[i]), index=False)
+        print(f'Saved: df_synthetic_random_{list_name[i]}.csv of shape {df.shape}')
 
 
 

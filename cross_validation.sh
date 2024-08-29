@@ -23,10 +23,10 @@
 
 
 model="net" # Options: "net"=our model for cf+predictor, "vcnet"=model for cf+predictor, "predictor"
-data_type="2cluster"  # Options: "2cluster", "random", "cluster" is an old version of 2cluster
+data_type="random"  # Options: "2cluster", "random", "cluster" is an old version of 2cluster
 n_epochs=10 # number of epochs for centralized training 
-n_rounds=20 # number of rounds for federated learning - local epochs can be set directly on the server code
-dataset="cifar10" # Options: "diabetes", "breast", "synthetic",'mnist', 'cifar10'
+n_rounds=100 # number of rounds for federated learning - local epochs can be set directly on the server code
+dataset="synthetic" # Options: "diabetes", "breast", "synthetic",'mnist', 'cifar10'
 n_clients=5 # number of clients, due to dataset dimension the number of clients must < 8 for real datasets, while diabetes can handle 20 clients
 n_attackers=1  # Adjust this as needed for testing attackers - our setting was 5 clients and 1 attacker for the real datasets, and 10 clients and 2 attackers for synthetic
 pers=0 # to perform client-adaptation after the federated learning - only with our server
@@ -47,7 +47,7 @@ trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM # kill all processes when th
 for i in $(seq 1 $K); do
     echo -e "\n\033[1;36mStarting fold $i with model: $model, data_type: $data_type, epochs: $n_epochs, rounds $n_rounds, dataset: $dataset, n_clients: $n_clients, n_attackers: $n_attackers, attack_type: $attack_type, personalization: $pers\033[0m"
     # create data
-    python data/client_split.py --seed "${seeds[i-1]}" --n_clients $n_clients
+    # python data/client_split.py --seed "${seeds[i-1]}" --n_clients $n_clients
     # trainining type
     if [ "$training_type" == "privacy_intrusive" ]; then
         python privacy_intrusive_CL.py --data_type "$data_type" --model "$model" --dataset "$dataset" --n_epochs "$n_epochs" --fold $i --n_clients $n_clients 

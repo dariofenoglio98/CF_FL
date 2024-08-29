@@ -148,8 +148,8 @@ def main()->None:
     # Start Flower client
     client = FlowerClient(model, X_train, y_train, X_val, y_val, optimizer, num_examples, args.id, args.data_type,
                            train_fn, evaluate_fn, config).to_client()
-    # fl.client.start_client(server_address="[::]:8098", client=client) # local host
-    fl.client.start_client(server_address="10.21.13.79:8098", client=client) # local host
+    fl.client.start_client(server_address="[::]:8098", client=client) # local host
+    # fl.client.start_client(server_address="10.21.13.79:8098", client=client) # local host
 
 
     # read saved data and plot
