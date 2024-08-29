@@ -2446,7 +2446,7 @@ def create_gif_aux(data, path, name, n_attackers=0, rounds=1000, worst_errors=No
     min_y = np.min(data_array[:, :, 1])
     min_y = min_y - np.abs(min_y)
     plt.close()
-    plt.rcParams['text.usetex'] = True
+    # plt.rcParams['text.usetex'] = True  # For latex rendering
     plt.rcParams.update({'font.size': 30})
     plt.rcParams["figure.figsize"] = (10,10)
     for i in tqdm(range(len(data))):
@@ -2514,7 +2514,7 @@ def create_image_with_trajectories_absolute(data, path, name, n_attackers=0, rou
     colors = ['blue', 'green', 'cyan', 'magenta', 'yellow', 'orange', 'purple', 'brown', 'lime', 'navy']
     # colors = sns.color_palette("pastel", len(data_dict))
     plt.close()
-    plt.rcParams['text.usetex'] = True
+    # plt.rcParams['text.usetex'] = True # For latex rendering
     plt.rcParams.update({'font.size': 30})
     plt.rcParams["figure.figsize"] = (10,5)
     return_best_int = int(return_best)
@@ -2600,7 +2600,7 @@ def create_image_with_trajectories_relative(data, path, name, n_attackers=0, rou
     colors = ['blue', 'green', 'cyan', 'magenta', 'yellow', 'orange', 'purple', 'brown', 'lime', 'navy']
     # colors = sns.color_palette("pastel", len(data_dict))
     plt.close()
-    plt.rcParams['text.usetex'] = True
+    # plt.rcParams['text.usetex'] = True # For latex rendering
     plt.rcParams.update({'font.size': 30})
     plt.rcParams["figure.figsize"] = (10,5)
     for i in tqdm(range(len(data))):
