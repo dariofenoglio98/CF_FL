@@ -206,8 +206,8 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
         w_dist, w_error, w_mix = utils.aggregate_metrics(client_data, server_round, self.data_type, self.dataset, self.model_config, self.fold)
         # CHOOSE THE SCORE - MIX (CF+ERROR), ERROR, CF
         # score = utils.normalize(w_dist)  # counterfactual score
-        # score = utils.normalize(w_error) # error score
-        score = utils.normalize(w_mix)
+        score = utils.normalize(w_error) # error score
+        # score = utils.normalize(w_mix)
         
         # update client memory
         self.client_memory[server_round] = {}
@@ -218,8 +218,8 @@ class SaveModelStrategy(fl.server.strategy.FedAvg):
                 self.client_memory[server_round][cid] = score[n]
         
         # SAVE CLIENT MEMORY FOR CLIENT-SCORE-BEHAVIOUR PLOT
-        with open(f"client_memory_round_{self.args_main.dataset}_{self.args_main.fold}.json", 'w') as f:
-            json.dump(self.client_memory, f)
+        # with open(f"client_memory_round_{self.args_main.dataset}_{self.args_main.fold}.json", 'w') as f:
+        #     json.dump(self.client_memory, f)
                     
         # calculate moving average
         moving_averages = self.calculate_moving_average(client_cid)
@@ -431,9 +431,9 @@ def main() -> None:
     # Create gif
     # utils.create_gif(args, config)
     
-    # create figure
-    with open(f"client_memory_round_{args.dataset}_{args.fold}.json", 'r') as f:
-        data = json.load(f)
+    # # create figure
+    # with open(f"client_memory_round_{args.dataset}_{args.fold}.json", 'r') as f:
+    #     data = json.load(f)
 
     # Calculate moving averages
     df_moving_avg = utils.calculate_moving_average(data, args.window_size)

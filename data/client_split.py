@@ -364,9 +364,15 @@ if args.n_clients < 101:
 
 
     # flip the labels
-    def flip_client(path):
+    def flip_client(path, binary=True):
         client = pd.read_csv(path + '.csv')
-        client['Labels'] = 1 - client['Labels']
+        
+        if binary:
+            client['Labels'] = 1 - client['Labels']
+        else:
+            num_classes = 10
+            client['Labels'] = (client['Labels'] + 1) % num_classes
+
         # split the path
         path = path.split('_')
         new_path = path[0] + '_' + path[1] + '_' + path[2] + '_DP_flip_' + path[3]
@@ -379,24 +385,24 @@ if args.n_clients < 101:
     flip_client('data/df_diabetes_random_2')
     flip_client('data/df_mnist_random_1')
     flip_client('data/df_mnist_random_2')
-    flip_client('data/df_cifar10_random_1')
-    flip_client('data/df_cifar10_random_2')
+    flip_client('data/df_cifar10_random_1', binary=False)
+    flip_client('data/df_cifar10_random_2', binary=False)
     flip_client('data/df_breast_2cluster_1')
     flip_client('data/df_breast_2cluster_2')
     flip_client('data/df_diabetes_2cluster_1')
     flip_client('data/df_diabetes_2cluster_2')
     flip_client('data/df_mnist_2cluster_1')
     flip_client('data/df_mnist_2cluster_2')
-    flip_client('data/df_cifar10_2cluster_1')
-    flip_client('data/df_cifar10_2cluster_2')
+    flip_client('data/df_cifar10_2cluster_1', binary=False)
+    flip_client('data/df_cifar10_2cluster_2', binary=False)
     flip_client('data/df_breast_cluster_1')
     flip_client('data/df_breast_cluster_2')
     flip_client('data/df_diabetes_cluster_1')
     flip_client('data/df_diabetes_cluster_2')
     flip_client('data/df_mnist_cluster_1')
     flip_client('data/df_mnist_cluster_2')
-    flip_client('data/df_cifar10_cluster_1')
-    flip_client('data/df_cifar10_cluster_2')
+    flip_client('data/df_cifar10_cluster_1', binary=False)
+    flip_client('data/df_cifar10_cluster_2', binary=False)
     
 
 
@@ -405,7 +411,7 @@ if args.n_clients < 101:
     # In[71]:
 
 
-    # flip the labels
+    # inverted loss
     def inverted_client(path):
         client = pd.read_csv(path + '.csv')
         # split the path
@@ -441,7 +447,7 @@ if args.n_clients < 101:
     
     
 
-    # flip the labels CF
+    # inverted loss CF
     def inverted_client(path):
         client = pd.read_csv(path + '.csv')
         # split the path
@@ -646,7 +652,7 @@ if args.synthetic_features == 2:
     inverted_2 =  {'x': data_dict[2]['x'], 'y': data_dict[2]['y']}
     inverted_2_test = {'x': data_dict_test[2]['x'], 'y': data_dict_test[2]['y']}
 
-    # inverted loss - same as honest
+    # inverted loss cf - same as honest
     inverted_1_cf =  {'x': data_dict[1]['x'], 'y': data_dict[1]['y']}
     inverted_1_test_cf = {'x': data_dict_test[1]['x'], 'y': data_dict_test[1]['y']}
     inverted_2_cf =  {'x': data_dict[2]['x'], 'y': data_dict[2]['y']}
