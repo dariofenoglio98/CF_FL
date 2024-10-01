@@ -20,3 +20,23 @@ example_codes/checkpoints/
 example_codes/__pycache__/
 example_codes/data/*.csv
 example_codes/data/*.npy
+
+
+# C extensions
+*.so
+
+# Torch model files or datasets
+*.pt
+
+# csv files
+*.csv
+
+# json files
+*.json
+
+# images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.xlsx
