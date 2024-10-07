@@ -370,8 +370,7 @@ if args.n_clients < 101:
         if binary:
             client['Labels'] = 1 - client['Labels']
         else:
-            num_classes = 10
-            client['Labels'] = (client['Labels'] + 1) % num_classes
+            client['Labels'] = client['Labels'].apply(lambda x: 8 if x == 2 else x) # Targeted
 
         # split the path
         path = path.split('_')

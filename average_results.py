@@ -79,7 +79,7 @@ parser.add_argument(
 parser.add_argument(
     "--defense",
     type=str,
-    choices=["median", "ours", "krum", "trim", "bulyan", "none", "", "rfa"],
+    choices=["median", "FBSs", "FBPs", "ours", "krum", "trim", "bulyan", "none", "", "rfa"], 
     default="ours",
     help="Specifies the defense mechanism to be used",
 )
@@ -96,7 +96,9 @@ parser.add_argument(
         help="Specifies the window size for moving average",
     )
 args = parser.parse_args()
-
+if args.defense == "FBSs":
+    args.defense = "ours"
+    
 print(f"\n\n\033[33mAveraging Results - K {args.K}\033[0m")
 
 # create folder
