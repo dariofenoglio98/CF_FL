@@ -138,6 +138,8 @@ def main()->None:
     # load data
     X_train, y_train, X_val, y_val, X_test, y_test, num_examples = utils.load_data(
         client_id=str(args.id), device=device, type=args.data_type, dataset=args.dataset)
+    
+    print(f"Client {args.id} - Data type: {args.data_type} - Dataset: {args.dataset} - Model: {args.model} - Data shape: {X_train.shape}")
 
     # Model
     model = model(config=config).to(device)
